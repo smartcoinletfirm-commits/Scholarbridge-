@@ -682,4 +682,46 @@
     bind("logout", "click", logout);
     bind("copyReferral", "click", copyReferral);
     bind("shareInvite", "click", shareInvite);
-    bind("showSupport", "click", contac
+    bind("showSupport", "click", contactSupport);
+    bind("supportButton", "click", contactSupport);
+    bind("refreshDashboard", "click", () => loadDashboardData().then(() => notice("Dashboard refreshed.", "success")).catch(showError));
+    document.querySelectorAll(".tab[data-tab]").forEach(tab => {
+      if (tab.dataset.appBound) return;
+      tab.dataset.appBound = "1";
+      tab.addEventListener("click", () => switchMode(tab.dataset.tab === "signupForm" ? "signup" : "login"));
+    });
+    bind("closeSupport", "click", () => showView("dashboardView"));
+  }
+
+  async function startApp() {
+    bindEvents();
+    rotateTheme();
+    setInterval(rotateTheme, 60 * 1000);
+    if (!db) {
+      showError("Supabase client is missing. Ensure the Supabase JS library loads before app.js.");
+      return;
+    }
+    try {
+      const { data: { session }, error } = await db.auth.getSession();
+      if (error) throw error;
+      await routeUser(session?.user || null);
+    } catch (error) {
+      console.error("Startup error:", error);
+      showError("Could not connect to your account. Refresh and try again.");
+    }
+    if (!authListenerRegistered) {
+      authListenerRegistered = true;
+      db.auth.onAuthStateChange((_event, session) => {
+        // Avoid awaiting network-heavy routing directly inside Supabase's auth callback.
+        setTimeout(() => routeUser(session?.user || null).catch(err => console.error("Auth route:", err)), 0);
+      });
+    }
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", startApp, { once: true });
+  } else {
+    startApp();
+  }
+})();
+
