@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#07140d">
+  <meta name="description" content="Scholarbrige Academic Hub — Learn, Write, Research and Grow.">
+  <title>Scholarbrige Academic Hub</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script defer src="app.js"></script>
+</head>
+<body>
+  <main class="app-shell">
+    <header class="site-header">
+      <a href="#" class="brand" aria-label="Scholarbrige home">
+        <span class="brand-mark">S</span>
+        <span><strong>Scholarbrige</strong><small>ACADEMIC HUB</small></span>
+      </a>
+      <span class="status-chip">Learn · Write · Grow</span>
+    </header>
+
+    <div id="globalMessage" class="notice hidden" role="status" aria-live="polite"></div>
+
+    <section id="authView" class="auth-layout">
+      <div class="welcome-panel">
+        <p class="eyebrow">YOUR ACADEMIC JOURNEY</p>
+        <h1>Connect. Learn. Grow.</h1>
+        <p>Build your academic skills, access opportunities and grow with the Scholarbrige community.</p>
+        <ul class="benefit-list">
+          <li>Academic learning opportunities</li>
+          <li>Personal member dashboard</li>
+          <li>Referral and account support</li>
+        </ul>
+      </div>
+      <div class="panel auth-panel">
+        <div class="tabs">
+          <button type="button" class="tab active" data-tab="loginForm">Log in</button>
+          <button type="button" class="tab" data-tab="signupForm">Create account</button>
+        </div>
+        <form id="loginForm" class="form">
+          <h2>Welcome back</h2>
+          <p>Log in to your Scholarbrige account.</p>
+          <label>Email address
+            <input name="email" type="email" autocomplete="email" required placeholder="you@example.com">
+          </label>
+          <label>Password
+            <input name="password" type="password" autocomplete="current-password" required placeholder="Your password">
+          </label>
+          <button class="primary full" type="submit">Log in <span>→</span></button>
+          <button class="text-button" id="resetPassword" type="button">Forgot password?</button>
+        </form>
+        <form id="signupForm" class="form hidden">
+          <h2>Create your account</h2>
+          <p>Enter your details accurately.</p>
+          <label>Full name
+            <input name="full_name" type="text" autocomplete="name" required minlength="2" placeholder="Your full name">
+          </label>
+          <label>Email address
+            <input name="email" type="email" autocomplete="email" required placeholder="you@example.com">
+          </label>
+          <label>Phone number
+            <input name="phone" type="tel" autocomplete="tel" required placeholder="+254...">
+          </label>
+          <label>Education level
+            <select name="education_level" required>
+              <option value="">Select education level</option>
+              <option value="secondary">Secondary school</option>
+              <option value="college">College</option>
+              <option value="university">University</option>
+              <option value="graduate">Graduate studies</option>
+              <option value="other">Other</option>
+            </select>
+          </label>
+          <label>Country
+            <select name="country" required>
+              <option value="">Select country</option>
+              <option value="Kenya">Kenya</option>
+              <option value="Uganda">Uganda</option>
+              <option value="Tanzania">Tanzania</option>
+              <option value="Ghana">Ghana</option>
+              <option value="Nigeria">Nigeria</option>
+            </select>
+          </label>
+          <label>Referral code (optional)
+            <input name="referral_code" type="text" placeholder="Enter a friend's referral code">
+          </label>
+          <label>Password
+            <input name="password" type="password" autocomplete="new-password" required minlength="8" placeholder="At least 8 characters">
+          </label>
+          <label class="checkbox-label">
+            <input name="age_confirmed" type="checkbox" required>
+            <span>I confirm that I am 18 years old or above.</span>
+          </label>
+          <button class="primary full" type="submit">Create account <span>→</span></button>
+          <p class="small-note">Account activation and approval are separate from registration.</p>
+        </form>
+      </div>
+    </section>
+
+    <section id="verificationView" class="panel page-panel hidden">
+      <p class="eyebrow">ACCOUNT ACTIVATION</p>
+      <h1>Submit your FBK reference</h1>
+      <p>Enter the FBK reference code provided to you by the administrator. Your submission will be reviewed manually.</p>
+      <div class="notice">Submitting a reference does not automatically confirm payment or activate your account.</div>
+      <form id="verificationForm" class="form">
+        <label>FBK reference code
+          <input id="fbkcode" name="position_number" type="text" inputmode="numeric" autocomplete="off"
+            minlength="4" maxlength="4" pattern="[0-9]{4}" aria-label="Four-digit FBK reference code"
+            placeholder="Enter 4-digit code" required>
+        </label>
+        <button class="primary full" type="submit">Submit reference</button>
+      </form>
+      <p id="verificationMessage" class="small-note" aria-live="polite"></p>
+      <div class="action-list">
+        <button class="secondary full" id="checkVerification" type="button">Check submission status</button>
+        <button class="text-button" id="logoutVerification" type="button">Log out</button>
+      </div>
+    </section>
+
+    <section id="pendingView" class="panel page-panel hidden">
+      <div class="status-icon">◷</div>
+      <p class="eyebrow">APPLICATION STATUS</p>
+      <h1>Awaiting review</h1>
+      <p id="pendingLabel">Your account is waiting for administrator review.</p>
+      <div class="countdown-card">
+        <span>Estimated review window</span>
+        <strong id="reviewCountdown">Up to 6 hours</strong>
+        <small>Time shown is an estimate, not a guarantee of approval.</small>
+      </div>
+      <p id="reviewMessage" aria-live="polite">Your details are under system checks and approval.</p>
+      <p id="paymentDirection" class="small-note"></p>
+      <div id="reviewExpired" class="notice hidden">The estimated review period has elapsed. Contact support if your status has not changed.</div>
+      <div class="action-list">
+        <button class="primary full" id="checkPending" type="button">Refresh account status</button>
+        <a class="secondary full" href="mailto:smart@gmail.com">Contact support</a>
+        <button class="text-button" id="logoutPending" type="button">Log out</button>
+      </div>
+    </section>
+
+    <section id="dashboardView" class="hidden">
+      <div class="dashboard-heading">
+        <div>
+          <p class="eyebrow">MEMBER WORKSPACE</p>
+          <h1>Welcome, <span id="memberName">Member</span></h1>
+          <p id="dashStatus">Your account dashboard</p>
+        </div>
+        <button id="logoutDashboard" class="secondary" type="button">Log out</button>
+      </div>
+      <div class="metrics-grid">
+        <article class="panel metric-card">
+          <span>Available wallet balance</span>
+          <strong id="walletHeadline">KES 0.00</strong>
+          <small>Subject to database confirmation</small>
+        </article>
+        <article class="panel metric-card">
+          <span>Your referrals</span>
+          <strong id="refCount">0</strong>
+          <small>Verified referrals only, where supported</small>
+        </article>
+      </div>
+      <div class="dash-columns">
+        <article class="panel">
+          <div class="panel-head"><h2>Your Scholarbrige Circle</h2><span class="icon-chip">✦</span></div>
+          <p>Celebrate real milestones with people connected to your referral journey.</p>
+          <div id="circleFeed" class="feed-empty">Your circle updates will appear here when verified milestones are available.</div>
+        </article>
+        <article class="panel">
+          <div class="panel-head"><h2>Quick actions</h2><span class="icon-chip">↗</span></div>
+          <div class="action-list">
+            <button class="action" id="shareInvite" type="button">
+              <span>↗</span><div><strong>Invite a friend</strong><small>Share your personal referral link</small></div>
+            </button>
+            <button class="action" id="showSupport" type="button">
+              <span>✉</span><div><strong>Contact support</strong><small>Get help with your account</small></div>
+            </button>
+          </div>
+          <label>Your referral code
+            <input id="refCode" type="text" readonly value="">
+          </label>
+          <button id="copyReferral" class="secondary full" type="button">Copy referral code</button>
+        </article>
+      </div>
+
+      <section id="adminActivationPanel" class="panel hidden">
+        <div class="panel-head">
+          <h2>FBK submission review</h2>
+          <button id="refreshActivationQueue" class="secondary" type="button">Refresh</button>
+        </div>
+        <p id="adminQueueStatus" aria-live="polite">Administrator review queue.</p>
+        <div id="adminActivationQueue"></div>
+        <button id="enableActivationAlerts" class="secondary" type="button">Enable review alerts</button>
+      </section>
+
+      <section id="sellAccountPanel" class="panel hidden">
+        <h2>Account services</h2>
+        <form id="sellAccountForm" class="form">
+          <label>Account level
+            <select id="sellAccountLevel" name="level">
+              <option value="4">Level 4</option>
+              <option value="5">Level 5</option>
+              <option value="6">Level 6</option>
+            </select>
+          </label>
+          <p id="sellAccountPrice"></p>
+          <button class="primary" type="submit">Submit request</button>
+        </form>
+        <p id="sellAccountStatus" aria-live="polite"></p>
+      </section>
+
+      <section id="adminSalePanel" class="panel hidden">
+        <div class="panel-head">
+          <h2>Account sale requests</h2>
+          <button id="refreshSaleQueue" class="secondary" type="button">Refresh</button>
+        </div>
+        <p id="adminSaleStatus" aria-live="polite"></p>
+        <div id="adminSaleQueue"></div>
+      </section>
+
+      <p class="small-note">Wallet balances, tasks, referrals and withdrawals depend on database tables, security policies and JavaScript being correctly configured.</p>
+    </section>
+
+    <section id="supportView" class="panel page-panel hidden">
+      <p class="eyebrow">WE ARE HERE TO HELP</p>
+      <h1>Contact support</h1>
+      <p>For login, activation or account-review assistance, contact the support email below.</p>
+      <a class="primary full" href="mailto:smart@gmail.com?subject=Scholarbrige%20Academic%20Hub%20Support">Email support</a>
+      <button id="closeSupport" class="secondary full" type="button">Back</button>
+    </section>
+
+    <footer>
+      <span>© <span id="year"></span> Scholarbrige Academic Hub</span>
+      <span>Learn · Write · Research · Grow</span>
+      <a href="mailto:smart@gmail.com">Support</a>
+    </footer>
+  </main>
+</body>
+  </html>
+                
