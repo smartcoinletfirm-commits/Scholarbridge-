@@ -366,4 +366,308 @@
 
   async function contactSupport() {
     const subject = encodeURIComponent(`${BRAND_NAME} support`);
-    const body = encodeURIComponent(`Hello Scholarbrige support,\n\nI need help 
+    const body = encodeURIComponent(`Hello Scholarbrige support,\n\nI need help with my account.\nAccount email: ${currentUser?.email || ""}\n`);
+    window.location.href = `mailto:${SUPPORT_EMAIL}?subject=${subject}&body=${body}`;
+  }
+
+  function ensureTaskContainers() {
+    const dashboard = $("dashboardView");
+    if (!dashboard) return;
+    let root = $("taskCentre");
+    if (!root) {
+      root = document.createElement("section");
+      root.id = "taskCentre";
+      root.className = "task-centre";
+      root.innerHTML = `
+        <div class="task-centre-heading"><h2>Earn by completing tasks</h2>
+        <p>Ads and surveys pay KES 20 per approved task. Rewards remain pending until verified.</p></div>
+        <div class="task-tabs" role="tablist">
+          <button type="button" data-task-filter="all">All tasks</button>
+          <button type="button" data-task-filter="ads">Ads tasks</button>
+          <button type="button" data-task-filter="survey">Survey tasks</button>
+          <button type="button" data-task-filter="other">Other tasks</button>
+          <button type="button" id="refreshTasks">Refresh tasks</button>
+        </div>
+        <p id="taskNotice" role="status"></p><div id="taskList"></div>
+        <section id="adminTaskReview" class="hidden"><h3>Task submissions for review</h3><div id="adminTaskList"></div></section>`;
+      dashboard.appendChild(root);
+    }
+    if (!document.getElementById("scfTaskStyles")) {
+      const style = document.createElement("style");
+      style.id = "scfTaskStyles";
+      style.textContent = `
+        .task-centre{margin:24px 0;padding:18px;border:1px solid #b7d8ff;border-radius:16px;background:var(--surface,#fff);color:var(--text,#172033)}
+        .task-centre h2,.task-centre h3{margin:0 0 8px}.task-tabs{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}
+        .task-tabs button,.task-card button,.task-review-actions button{border:1px solid #8bbcff;border-radius:9px;padding:9px 12px;cursor:pointer}
+        .task-card{border:1px solid #d8e3ef;border-radius:12px;padding:14px;margin:10px 0;background:rgba(120,160,200,.06)}
+        .task-card h3{margin:0 0 6px}.task-meta{font-size:.9rem;opacity:.8}.task-card textarea,.task-card input{width:100%;box-sizing:border-box;margin:8px 0;padding:10px;border:1px solid #cbd5e1;border-radius:8px}
+        .task-card button{margin:4px 5px 4px 0}.task-status{font-weight:600}.task-card .reward{font-weight:700}
+        .task-centre .hidden{display:none!important}`;
+      document.head.appendChild(style);
+    }
+    root.querySelectorAll("[data-task-filter]").forEach(btn => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = "1";
+      btn.addEventListener("click", () => { root.dataset.filter = btn.dataset.taskFilter; loadTasks().catch(showTaskError); });
+    });
+    $("refreshTasks")?.addEventListener("click", () => loadTasks().catch(showTaskError));
+  }
+
+  function taskCategory(type) {
+    const t = String(type || "").toLowerCase();
+    if (["ad", "ads", "advert", "advertisement", "advertisements"].includes(t)) return "ads";
+    if (["survey", "surveys", "questionnaire"].includes(t)) return "survey";
+    return "other";
+  }
+  function taskReward(task) {
+    const category = taskCategory(task.task_type);
+    return category === "ads" || category === "survey" ? 20 : Number(task.reward_kes || 0);
+  }
+  function showTaskError(error) {
+    console.error("Task loading error:", error);
+    setText("taskNotice", "Tasks could not load. Check the tasks table and its Supabase read policy, then refresh.");
+  }
+
+  async function loadTasks() {
+    if (!currentUser || !currentProfile || currentProfile.account_status !== "approved") return;
+    ensureTaskContainers();
+    const list = $("taskList");
+    if (!list) return;
+    list.innerHTML = "<p>Loading tasks…</p>";
+    const { data: tasks, error } = await requireDatabase().from("tasks")
+      .select("id,title,description,task_type,reward_points,reward_kes,is_active,requires_review,created_at")
+      .eq("is_active", true).order("created_at", { ascending: false });
+    if (error) throw error;
+    const { data: submissions, error: subError } = await requireDatabase().from("task_submissions")
+      .select("id,task_id,status,submitted_at,reviewed_at,review_reason")
+      .eq("user_id", currentUser.id).order("submitted_at", { ascending: false });
+    if (subError) console.warn("Could not load task submission history:", subError);
+    const latestByTask = new Map();
+    (submissions || []).forEach(s => { if (!latestByTask.has(s.task_id)) latestByTask.set(s.task_id, s); });
+    const filter = $("taskCentre")?.dataset.filter || "all";
+    const filtered = (tasks || []).filter(t => filter === "all" || taskCategory(t.task_type) === filter);
+    if (!filtered.length) {
+      list.innerHTML = `<div class="task-card"><p>No ${filter === "all" ? "" : safeText(filter) + " "}tasks are available right now. Please check again later.</p></div>`;
+      setText("taskNotice", "");
+      return;
+    }
+    list.innerHTML = "";
+    filtered.forEach(task => {
+      const previous = latestByTask.get(task.id);
+      const category = taskCategory(task.task_type);
+      const reward = taskReward(task);
+      const locked = previous && ["submitted", "pending", "under_review", "approved", "accepted", "completed"].includes(String(previous.status).toLowerCase());
+      const card = document.createElement("article");
+      card.className = "task-card";
+      const statusText = previous ? `Latest submission: ${previous.status}${previous.review_reason ? " — " + previous.review_reason : ""}` : "Not submitted";
+      card.innerHTML = `
+        <h3>${safeText(task.title || "Task")}</h3>
+        <p>${safeText(task.description || "Follow the task instructions and submit the requested evidence.")}</p>
+        <p class="task-meta">Category: ${safeText(category === "ads" ? "Ads task" : category === "survey" ? "Survey task" : "Other task")}</p>
+        <p class="reward">Reward: ${money(reward)}${category === "ads" || category === "survey" ? " after verification" : ""}</p>
+        <p class="task-status">${safeText(statusText)}</p>
+        ${locked ? "" : `<label>Evidence / completion details<textarea rows="3" data-evidence placeholder="Describe completion or paste the requested evidence link"></textarea></label>
+        <button type="button" data-submit-task="${safeText(task.id)}">Submit for review</button>`}
+        ${locked && ["rejected", "declined"].includes(String(previous.status).toLowerCase()) ? `<p>You may contact support if you believe this decision is incorrect.</p>` : ""}`;
+      list.appendChild(card);
+      card.querySelector("[data-submit-task]")?.addEventListener("click", () => submitTask(task, card));
+    });
+    setText("taskNotice", "Complete only tasks you are eligible to do. Do not submit false evidence. Rewards are subject to administrator verification.");
+    if (currentProfile.role === "admin") loadAdminTaskSubmissions().catch(err => console.warn("Admin task queue:", err));
+  }
+
+  async function submitTask(task, card) {
+    const evidence = String(card.querySelector("[data-evidence]")?.value || "").trim();
+    if (!evidence) return setText("taskNotice", "Add evidence or completion details before submitting.");
+    if (evidence.length > 5000) return setText("taskNotice", "Evidence is too long. Keep it under 5,000 characters.");
+    const button = card.querySelector("[data-submit-task]");
+    try {
+      setButtonLoading(button, true);
+      // The database must enforce duplicate prevention and permissions; this browser check is not security.
+      const { data: prior, error: priorError } = await requireDatabase().from("task_submissions")
+        .select("id,status").eq("user_id", currentUser.id).eq("task_id", task.id)
+        .in("status", ["submitted", "pending", "under_review", "approved", "accepted", "completed"]).limit(1);
+      if (priorError) throw priorError;
+      if (prior?.length) throw new Error("You already have a pending or approved submission for this task.");
+      const { error } = await requireDatabase().from("task_submissions").insert({
+        task_id: task.id, user_id: currentUser.id, evidence, status: "submitted"
+      });
+      if (error) throw error;
+      setText("taskNotice", "Submitted for administrator review. KES 20 is not added to your wallet until the submission is verified.");
+      await loadTasks();
+    } catch (error) {
+      setText("taskNotice", "Submission failed: " + (error.message || "Check the task_submissions table policy."));
+    } finally { setButtonLoading(button, false); }
+  }
+
+  async function loadAdminTaskSubmissions() {
+    if (currentProfile?.role !== "admin") return;
+    const panel = $("adminTaskReview"), list = $("adminTaskList");
+    if (!panel || !list) return;
+    panel.classList.remove("hidden");
+    const { data, error } = await requireDatabase().from("task_submissions")
+      .select("id,task_id,user_id,evidence,status,submitted_at,review_reason")
+      .in("status", ["submitted", "pending", "under_review"]).order("submitted_at", { ascending: true }).limit(100);
+    if (error) {
+      list.innerHTML = `<p>Admin queue cannot load. Database review permissions or a secure review RPC may be required.</p>`;
+      return;
+    }
+    if (!data?.length) { list.innerHTML = "<p>No task submissions are awaiting review.</p>"; return; }
+    list.innerHTML = "";
+    data.forEach(item => {
+      const row = document.createElement("article");
+      row.className = "task-card";
+      row.innerHTML = `<p><strong>Task:</strong> ${safeText(item.task_id)}</p>
+        <p><strong>User:</strong> ${safeText(item.user_id)}</p>
+        <p><strong>Evidence:</strong></p><pre style="white-space:pre-wrap;overflow-wrap:anywhere">${safeText(item.evidence)}</pre>
+        <p><strong>Status:</strong> ${safeText(item.status)}</p>
+        <p>For security, approval and wallet crediting must be performed by a trusted Supabase function, not by direct browser updates.</p>`;
+      list.appendChild(row);
+    });
+  }
+
+  async function loadDashboardData() {
+    if (!currentUser) return;
+    const requestId = ++dashboardRequest;
+    const walletEl = $("walletHeadline") || $("walletBalance") || $("availableBalance") || $("walletAmount");
+    try {
+      const { data: wallet, error } = await requireDatabase().from("wallets")
+        .select("currency,available_balance,reserved_balance,total_withdrawn")
+        .eq("user_id", currentUser.id).maybeSingle();
+      if (requestId !== dashboardRequest) return;
+      if (error) throw error;
+      if (wallet) {
+        if (walletEl) walletEl.textContent = money(wallet.available_balance);
+        setText("reservedBalance", money(wallet.reserved_balance));
+        setText("totalWithdrawn", money(wallet.total_withdrawn));
+        setText("walletCurrency", wallet.currency || "KES");
+      } else if (walletEl) walletEl.textContent = money(0);
+    } catch (error) {
+      console.warn("Wallet read failed:", error);
+      if (walletEl) walletEl.textContent = "Wallet temporarily unavailable";
+    }
+    try {
+      const { data: withdrawals, error } = await requireDatabase().from("withdrawal_requests")
+        .select("id,amount,currency,status,created_at,admin_note")
+        .eq("user_id", currentUser.id).order("created_at", { ascending: false }).limit(10);
+      if (error) throw error;
+      const history = $("withdrawalHistory");
+      if (history) {
+        history.innerHTML = withdrawals?.length ? withdrawals.map(w =>
+          `<div class="history-item"><strong>${money(w.amount)}</strong> — ${safeText(w.status)} <small>${safeText(w.created_at ? new Date(w.created_at).toLocaleString() : "")}</small>${w.admin_note ? `<p>${safeText(w.admin_note)}</p>` : ""}</div>`
+        ).join("") : "<p>No withdrawal requests yet.</p>";
+      }
+    } catch (error) { console.warn("Withdrawal history unavailable:", error); }
+    try {
+      const { count, error } = await requireDatabase().from("profiles")
+        .select("id", { count: "exact", head: true }).eq("referred_by", currentProfile?.referral_code || "__no_referral_code__");
+      if (!error && count !== null) setText("refCount", String(count));
+    } catch (error) { console.warn("Referral count unavailable:", error); }
+    await loadTasks().catch(showTaskError);
+  }
+
+  async function showDashboard(profile) {
+    if (!profile || String(profile.account_status).toLowerCase() !== "approved") {
+      showView("pendingView");
+      setText("pendingLabel", "Awaiting manual activation approval");
+      return;
+    }
+    showView("dashboardView");
+    setText("memberName", profile.full_name || profile.email || "Member");
+    setText("dashStatus", "Approved member");
+    setText("refCode", profile.referral_code || "Your referral code is being prepared");
+    setText("profileEmail", profile.email || currentUser?.email || "");
+    if ($("adminActivationPanel")) $("adminActivationPanel").classList.toggle("hidden", profile.role !== "admin");
+    if ($("adminSalePanel")) $("adminSalePanel").classList.toggle("hidden", profile.role !== "admin");
+    if ($("sellAccountPanel")) $("sellAccountPanel").classList.remove("hidden");
+    updateSalePrice();
+    if (profile.role === "admin") {
+      loadAdminActivationQueue().catch(err => console.warn("Activation queue:", err));
+      loadAdminSaleQueue().catch(err => console.warn("Sale queue:", err));
+      if (adminQueueTimer) clearInterval(adminQueueTimer);
+      adminQueueTimer = setInterval(() => {
+        loadAdminActivationQueue().catch(err => console.warn("Activation queue:", err));
+        loadAdminSaleQueue().catch(err => console.warn("Sale queue:", err));
+      }, 20000);
+    } else if (adminQueueTimer) {
+      clearInterval(adminQueueTimer); adminQueueTimer = null;
+    }
+    await loadDashboardData();
+  }
+
+  async function loadAdminActivationQueue() {
+    if (currentProfile?.role !== "admin" || currentProfile?.account_status !== "approved" || !$("adminActivationPanel")) return;
+    const list = $("adminActivationQueue"); if (!list) return;
+    const { data, error } = await requireDatabase().from("fbk_code_submissions")
+      .select("id,user_id,submitted_code,status,created_at,admin_note")
+      .in("status", ["submitted", "reviewed", "rejected", "accepted"])
+      .order("created_at", { ascending: true }).limit(100);
+    if (error) { list.textContent = "FBK review queue could not load. Check the fbk_code_submissions admin policy."; setText("adminQueueStatus", "Queue unavailable."); return; }
+    const waiting = (data || []).filter(item => ["submitted", "reviewed"].includes(String(item.status || "").toLowerCase()));
+    setText("adminQueueStatus", `${waiting.length} FBK submission(s) awaiting action.`); list.replaceChildren();
+    if (!data?.length) { list.appendChild(createText("No FBK submissions yet.")); return; }
+    for (const item of data) {
+      const { data: profile } = await requireDatabase().from("profiles").select("full_name,email,phone,account_status").eq("id", item.user_id).maybeSingle();
+      const row = document.createElement("article"); row.className = "task-card";
+      const title = document.createElement("strong"); title.textContent = `${profile?.full_name || profile?.email || item.user_id} · FBK: ${item.submitted_code}`; row.appendChild(title);
+      row.appendChild(createText(`${profile?.phone || "No phone"} · Submitted ${item.created_at ? new Date(item.created_at).toLocaleString() : "date unavailable"} · Status: ${item.status}`));
+      if (item.admin_note) row.appendChild(createText(`Previous review note: ${item.admin_note}`));
+      const actions = document.createElement("div"); actions.className = "task-review-actions";
+      if (["submitted", "reviewed"].includes(String(item.status || "").toLowerCase())) {
+        actions.appendChild(createActionButton("Approve account", async () => {
+          if (!window.confirm(`Approve ${profile?.full_name || profile?.email || item.user_id} and unlock dashboard access? Only approve after checking the FBK submission.`)) return;
+          const note = window.prompt("Optional admin note:", "") || "";
+          try { const { data: result, error: rpcError } = await requireDatabase().rpc("scf_review_fbk_activation", { p_submission_id: item.id, p_approve: true, p_admin_note: note }); if (rpcError) throw rpcError; notice("Account approved. Dashboard access is now enabled.", "success"); await loadAdminActivationQueue(); }
+          catch (e) { showError("Approval failed: " + (e.message || e)); }
+        }));
+        actions.appendChild(createActionButton("Reject / request correction", async () => {
+          const note = window.prompt("Enter the reason for rejection (required):", ""); if (note === null) return; if (!note.trim()) return showError("Enter a rejection reason.");
+          try { const { error: rpcError } = await requireDatabase().rpc("scf_review_fbk_activation", { p_submission_id: item.id, p_approve: false, p_admin_note: note.trim() }); if (rpcError) throw rpcError; notice("FBK submission rejected with a reason. The member can submit a corrected code.", "success"); await loadAdminActivationQueue(); }
+          catch (e) { showError("Rejection failed: " + (e.message || e)); }
+        }));
+      }
+      row.appendChild(actions); list.appendChild(row);
+    }
+  }
+
+  const ACCOUNT_SALE_PRICES = { 4: 4200, 5: 12880, 6: 18000.80 };
+  function updateSalePrice() {
+    const level = Number($("sellAccountLevel")?.value || 4);
+    setText("sellAccountPrice", `Indicative service price: ${money(ACCOUNT_SALE_PRICES[level] || 0)}. Confirm details with support before payment.`);
+  }
+  async function submitAccountSale(event) {
+    event?.preventDefault();
+    if (!currentUser) return showError("Please sign in first.");
+    const level = Number($("sellAccountLevel")?.value || 4);
+    try {
+      setText("sellAccountStatus", "Submitting request…");
+      const { data, error } = await requireDatabase().functions.invoke("scholarbridge-activation", { body: { action: "sale_request", account_level: level } });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      setText("sellAccountStatus", "Request submitted for administrator review.");
+    } catch (error) { setText("sellAccountStatus", "Request failed: " + (error.message || "Please contact support.")); }
+  }
+  async function loadAdminSaleQueue() {
+    if (currentProfile?.role !== "admin" || !$("adminSalePanel")) return;
+    $("adminSalePanel").classList.remove("hidden");
+    const list = $("adminSaleQueue"); if (!list) return;
+    const { data, error } = await requireDatabase().from("account_sale_requests").select("*").order("created_at", { ascending: false }).limit(50);
+    if (error) { list.textContent = "Sale queue could not load. Check table permissions."; return; }
+    list.innerHTML = "";
+    if (!data?.length) { list.textContent = "No account sale requests."; return; }
+    data.forEach(item => { const row = document.createElement("article"); row.className = "task-card"; row.textContent = `Request ${item.id || ""} · Level ${item.level || item.membership_level || "—"} · ${item.status || "pending"} · ${money(item.price || item.amount || 0)}`; list.appendChild(row); });
+  }
+
+  async function logout() {
+    try { if (db) await db.auth.signOut(); }
+    catch (error) { console.warn("Sign out issue:", error); }
+    currentUser = null; currentProfile = null;
+    if (adminQueueTimer) clearInterval(adminQueueTimer);
+    if (reviewTimer) clearInterval(reviewTimer);
+    showView($("loginView") ? "loginView" : "authView");
+  }
+
+  async function copyReferral() {
+    const code = String($("refCode")?.textContent || currentProfile?.referral_code || "").trim();
+    if (!code || code.includes("prepared")) return notice("Your referral code is not available yet.", "error");
+    const link = `${window.location.origin}${window.location.pathname}?ref=${encodeURIComponent(code)}`;
