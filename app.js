@@ -671,3 +671,122 @@
     const code = String($("refCode")?.textContent || currentProfile?.referral_code || "").trim();
     if (!code || code.includes("prepared")) return notice("Your referral code is not available yet.", "error");
     const link = `${window.location.origin}${window.location.pathname}?ref=${encodeURIComponent(code)}`;
+    try {
+      await navigator.clipboard.writeText(link);
+      notice("Referral link copied. Share it with friends.", "success");
+    } catch {
+      window.prompt("Copy your referral link:", link);
+    }
+  }
+  async function shareInvite() {
+    const code = String($("refCode")?.textContent || currentProfile?.referral_code || "").trim();
+    const link = `${window.location.origin}${window.location.pathname}?ref=${encodeURIComponent(code)}`;
+    const text = `Join ${BRAND_NAME}. Connect, learn and grow: ${link}`;
+    try {
+      if (navigator.share) await navigator.share({ title: BRAND_NAME, text, url: link });
+      else { await navigator.clipboard.writeText(text); notice("Invite text copied.", "success"); }
+    } catch (error) { if (error.name !== "AbortError") notice("Share cancelled or unavailable.", "info"); }
+  }
+
+  function applyTheme(theme) {
+    if (!theme) return;
+    document.documentElement.dataset.theme = theme;
+    THEME_ORDER.forEach(t => document.body?.classList.toggle(t, t === theme));
+    try { localStorage.setItem("scholarbrige_theme", theme); } catch {}
+  }
+  function rotateTheme() {
+    try {
+      const started = Number(localStorage.getItem(THEME_KEY)) || Date.now();
+      if (!localStorage.getItem(THEME_KEY)) localStorage.setItem(THEME_KEY, String(started));
+      const index = Math.floor((Date.now() - started) / THEME_INTERVAL) % THEME_ORDER.length;
+      applyTheme(THEME_ORDER[index]);
+    } catch {}
+  }
+
+  function bind(id, event, handler) {
+    const el = $(id);
+    if (el && !el.dataset.appBound) {
+      el.addEventListener(event, handler);
+      el.dataset.appBound = "1";
+    }
+  }
+  function bindEvents() {
+    bind("signupForm", "submit", signup);
+    bind("loginForm", "submit", login);
+    bind("activationForm", "submit", requestActivation);
+    bind("verificationForm", "submit", verifyActivationCode);
+    bind("sellAccountForm", "submit", submitAccountSale);
+    bind("refreshSaleQueue", "click", () => loadAdminSaleQueue().catch(showError));
+    bind("sellAccountLevel", "change", updateSalePrice);
+    bind("resetPassword", "click", resetPassword);
+    bind("forgotPassword", "click", () => showView("forgotPasswordView"));
+    bind("showSignup", "click", () => showView("signupView"));
+    bind("showLogin", "click", () => showView("loginView"));
+    bind("checkVerification", "click", refreshActivationStatus);
+    bind("refreshActivationQueue", "click", () => loadAdminActivationQueue().catch(showError));
+    bind("enableActivationAlerts", "click", async () => {
+      try {
+        if ("Notification" in window && Notification.permission !== "granted") await Notification.requestPermission();
+        notice("Review alerts enabled where your browser permits notifications. Keep this page open to monitor the queue.", "success");
+      } catch (e) { notice("Browser notifications are unavailable; the queue can still be refreshed manually.", "info"); }
+    });
+    bind("checkStatus", "click", refreshActivationStatus);
+    bind("checkPending", "click", refreshActivationStatus);
+    bind("dashLogout", "click", logout);
+    bind("logoutDashboard", "click", logout);
+    bind("logoutVerification", "click", logout);
+    bind("logoutActivation", "click", logout);
+    bind("logoutPending", "click", logout);
+    bind("logout", "click", logout);
+    bind("copyReferral", "click", copyReferral);
+    bind("shareInvite", "click", shareInvite);
+    bind("showSupport", "click", contactSupport);
+    bind("supportButton", "click", contactSupport);
+    bind("refreshDashboard", "click", () => loadDashboardData().then(() => notice("Dashboard refreshed.", "success")).catch(showError));
+    bind("countrySelect", "change", () => {
+      const select = $("countrySelect"), banner = $("countryWelcome");
+      if (!select || !banner) return;
+      const details = { Kenya: ["🇰🇪", "Happy to welcome you from Kenya!"], Uganda: ["🇺🇬", "Welcome, Uganda — grow with the community!"], Tanzania: ["🇹🇿", "Karibu Tanzania — learn and grow together!"], Ghana: ["🇬🇭", "Akwaaba, Ghana — your journey starts here!"], Nigeria: ["🇳🇬", "Welcome, Nigeria — connect and grow!" ] };
+      const item = details[select.value];
+      if (item) { banner.textContent = item[0] + "  " + item[1]; banner.classList.remove("hidden"); }
+      else { banner.textContent = ""; banner.classList.add("hidden"); }
+    });
+    document.querySelectorAll(".tab[data-tab]").forEach(tab => {
+      if (tab.dataset.appBound) return;
+      tab.dataset.appBound = "1";
+      tab.addEventListener("click", () => switchMode(tab.dataset.tab === "signupForm" ? "signup" : "login"));
+    });
+    bind("closeSupport", "click", () => showView("dashboardView"));
+  }
+
+  async function startApp() {
+    bindEvents();
+    rotateTheme();
+    setInterval(rotateTheme, 60 * 1000);
+    if (!db) {
+      showError("Supabase client is missing. Ensure the Supabase JS library loads before app.js.");
+      return;
+    }
+    try {
+      const { data: { session }, error } = await db.auth.getSession();
+      if (error) throw error;
+      await routeUser(session?.user || null);
+    } catch (error) {
+      console.error("Startup error:", error);
+      showError("Could not connect to your account. Refresh and try again.");
+    }
+    if (!authListenerRegistered) {
+      authListenerRegistered = true;
+      db.auth.onAuthStateChange((_event, session) => {
+        // Avoid awaiting network-heavy routing directly inside Supabase's auth callback.
+        setTimeout(() => routeUser(session?.user || null).catch(err => console.error("Auth route:", err)), 0);
+      });
+    }
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", startApp, { once: true });
+  } else {
+    startApp();
+  }
+})();
