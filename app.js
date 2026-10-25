@@ -853,7 +853,246 @@
     });
     bind("closeSupport", "click", () => showView("dashboardView"));
   }
+/* =========================================================
+   SCHOLARBRIGE ADMIN MANAGEMENT PANEL
+   Uses existing Supabase tables.
+   Does not change your existing signup or public-page design.
+   ========================================================= */
 
+async function loadScholarbrigeAdminPanel() {
+  const root = document.getElementById("scholarbrigeAdminPanel");
+
+  if (!root) {
+    console.warn("Admin panel container not found.");
+    return;
+  }
+
+  if (!window.currentUser && !window.sb && !window.supabaseClient) {
+    root.textContent = "Please sign in with an administrator account.";
+    return;
+  }
+
+  root.innerHTML = `
+    <section class="sb-admin">
+      <h2>Scholarbrige Admin Dashboard</h2>
+      <p>Manage members, FBK submissions and payment records.</p>
+
+      <div class="sb-admin-tabs">
+        <button type="button" data-sb-tab="users">All Users</button>
+        <button type="button" data-sb-tab="fbk">FBK Submissions</button>
+        <button type="button" data-sb-tab="payments">Payments</button>
+      </div>
+
+      <input id="sbAdminSearch"
+        type="search"
+        placeholder="Search name, email, phone or code..."
+        autocomplete="off">
+
+      <p id="sbAdminMessage" role="status">Loading records...</p>
+      <div id="sbAdminResults"></div>
+    </section>
+  `;
+
+  const results = root.querySelector("#sbAdminResults");
+  const message = root.querySelector("#sbAdminMessage");
+  const search = root.querySelector("#sbAdminSearch");
+
+  // Adapt this line to the Supabase client already used by your app.
+  const client =
+    window.supabaseClient ||
+    window.sb ||
+    window.supabase;
+
+  if (!client || typeof client.from !== "function") {
+    message.textContent =
+      "Supabase client not found. Connect this panel to your existing database client.";
+    return;
+  }
+
+  let activeTab = "fbk";
+  let records = [];
+
+  const escapeHTML = value =>
+    String(value ?? "").replace(/[&<>"']/g, char => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;"
+    })[char]);
+
+  async function loadRecords() {
+    message.textContent = "Loading...";
+    results.replaceChildren();
+
+    try {
+      if (activeTab === "users") {
+        const { data, error } = await client
+          .from("profiles")
+          .select(
+            "id,full_name,username,email,phone,country,education_level,role,account_status,created_at"
+          )
+          .order("created_at", { ascending: false })
+          .limit(500);
+
+        if (error) throw error;
+        records = data || [];
+      } else if (activeTab === "fbk") {
+        const { data, error } = await client
+          .from("fbk_code_submissions")
+          .select(`
+            id,user_id,submitted_code,status,admin_note,created_at,reviewed_at,
+            profiles!fbk_code_submissions_user_id_fkey(
+              full_name,email,phone,country,role,account_status
+            )
+          `)
+          .order("created_at", { ascending: false })
+          .limit(500);
+
+        if (error) throw error;
+        records = data || [];
+      } else {
+        const { data, error } = await client
+          .from("payment_submissions")
+          .select(`
+            id,user_id,country,membership_level,payment_provider,
+            payment_reference,status,submitted_at,review_reason,
+            profiles!payment_submissions_user_id_fkey(
+              full_name,email,phone
+            )
+          `)
+          .order("submitted_at", { ascending: false })
+          .limit(500);
+
+        if (error) throw error;
+        records = data || [];
+      }
+
+      renderRecords();
+      message.textContent = `${records.length} record(s) loaded.`;
+    } catch (error) {
+      console.error("Admin dashboard load failed:", error);
+      message.textContent =
+        "Could not load records. Check admin permissions, RLS policies, and the profile relationship name.";
+    }
+  }
+
+  function renderRecords() {
+    const query = search.value.trim().toLowerCase();
+
+    const filtered = records.filter(record =>
+      JSON.stringify(record).toLowerCase().includes(query)
+    );
+
+    if (!filtered.length) {
+      results.innerHTML = "<p>No matching records found.</p>";
+      return;
+    }
+
+    let headers;
+    let rows;
+
+    if (activeTab === "users") {
+      headers = [
+        "Name", "Email", "Phone", "Country",
+        "Role", "Account Status", "Created"
+      ];
+
+      rows = filtered.map(user => [
+        user.full_name,
+        user.email,
+        user.phone,
+        user.country,
+        user.role,
+        user.account_status,
+        user.created_at
+      ]);
+    } else if (activeTab === "fbk") {
+      headers = [
+        "Name", "Phone", "Email", "Country",
+        "FBK Code", "Submission Status",
+        "Submitted At", "Admin Note"
+      ];
+
+      rows = filtered.map(item => [
+        item.profiles?.full_name,
+        item.profiles?.phone,
+        item.profiles?.email,
+        item.profiles?.country,
+        item.submitted_code,
+        item.status,
+        item.created_at,
+        item.admin_note
+      ]);
+    } else {
+      headers = [
+        "Name", "Phone", "Country", "Level",
+        "Provider", "Payment Reference",
+        "Status", "Submitted At", "Review Reason"
+      ];
+
+      rows = filtered.map(item => [
+        item.profiles?.full_name,
+        item.profiles?.phone,
+        item.country,
+        item.membership_level,
+        item.payment_provider,
+        item.payment_reference,
+        item.status,
+        item.submitted_at,
+        item.review_reason
+      ]);
+    }
+
+    const table = document.createElement("table");
+    table.className = "sb-admin-table";
+
+    const thead = document.createElement("thead");
+    const headerRow = document.createElement("tr");
+
+    headers.forEach(header => {
+      const th = document.createElement("th");
+      th.textContent = header;
+      headerRow.appendChild(th);
+    });
+
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement("tbody");
+
+    filtered.forEach((record, index) => {
+      const tr = document.createElement("tr");
+
+      rows[index].forEach(value => {
+        const td = document.createElement("td");
+        td.textContent = value == null ? "—" : String(value);
+        tr.appendChild(td);
+      });
+
+      tbody.appendChild(tr);
+    });
+
+    table.appendChild(tbody);
+
+    const wrapper = document.createElement("div");
+    wrapper.className = "sb-admin-table-wrap";
+    wrapper.appendChild(table);
+    results.replaceChildren(wrapper);
+  }
+
+  root.querySelectorAll("[data-sb-tab]").forEach(button => {
+    button.addEventListener("click", () => {
+      activeTab = button.dataset.sbTab;
+      loadRecords();
+    });
+  });
+
+  search.addEventListener("input", renderRecords);
+
+  // Do not display private records unless Supabase authorizes the request.
+  await loadRecords();
+         }
   async function startApp() {
     bindEvents();
     rotateTheme();
