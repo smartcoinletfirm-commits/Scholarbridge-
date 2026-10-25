@@ -337,25 +337,120 @@
   }
 
   async function verifyActivationCode(event) {
-    event?.preventDefault();
-    if (!currentUser) return showError("Please sign in first.");
-    const form = $("verificationForm");
-    const input = form?.querySelector('[name="position_number"], [name="submitted_code"], [name="fbk_code"]');
-    const code = String(input?.value || "").trim();
-    if (!/^[A-Za-z0-9-]{2,80}$/.test(code)) return showError("Enter a valid FBK code.");
-    const button = form?.querySelector('[type="submit"]');
-    try {
-      setButtonLoading(button, true);
-      const { error } = await requireDatabase().from("fbk_code_submissions").insert({ user_id: currentUser.id, submitted_code: code, status: "submitted" });
+  event?.preventDefault();
+
+  if (!currentUser) {
+    return showError("Please sign in first.");
+  }
+
+  const form = $("verificationForm");
+  const input = form?.querySelector(
+    '[name="position_number"], [name="submitted_code"], [name="fbk_code"]'
+  );
+
+  const code = String(input?.value || "").trim();
+
+  if (!/^[A-Za-z0-9-]{2,80}$/.test(code)) {
+    return showError("Enter a valid FBK code.");
+  }
+
+  const button = form?.querySelector('[type="submit"]');
+  const db = requireDatabase();
+
+  try {
+    setButtonLoading(button, true);
+
+    // Check whether this user already has a submission.
+    const { data: previous, error: lookupError } = await db
+      .from("fbk_code_submissions")
+      .select("id,status")
+      .eq("user_id", currentUser.id)
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    if (lookupError) throw lookupError;
+
+    const latest = previous?.[0];
+
+    // Correct a rejected submission where possible.
+    if (latest && latest.status === "rejected") {
+      const { error } = await db
+        .from("fbk_code_submissions")
+        .update({
+          submitted_code: code,
+          status: "submitted",
+          admin_note: null,
+          reviewed_at: null
+        })
+        .eq("id", latest.id)
+        .eq("user_id", currentUser.id);
+
       if (error) throw error;
-      const started = Date.now(); localStorage.setItem(REVIEW_KEY_PREFIX + currentUser.id, String(started));
-      if (input) input.value = "";
-      notice("FBK code submitted. Your account is awaiting one manual administrator decision.", "success");
-      showView("pendingView"); setText("pendingLabel", "Awaiting manual activation approval");
-      setText("reviewMessage", `Your FBK code is under system checks and administrator review. Processing may take up to six hours. The countdown is an estimate only; it will not approve your account. Contact ${SUPPORT_EMAIL} if the time elapses.`);
-      startReviewCountdown(started);
-    } catch (error) { showError("Could not submit the FBK code: " + (error.message || "Please try again.")); }
-    finally { setButtonLoading(button, false); }
+    } else if (latest && ["submitted", "reviewed"].includes(latest.status)) {
+      // Avoid creating duplicate pending submissions.
+      // Do not overwrite a code already awaiting administrator review.
+      return showError(
+        "Your FBK code is already being reviewed. Please wait for the review result before submitting another code."
+      );
+    } else {
+      const { error } = await db
+        .from("fbk_code_submissions")
+        .insert({
+          user_id: currentUser.id,
+          submitted_code: code,
+          status: "submitted"
+        });
+
+      if (error) throw error;
+    }
+
+    const key = "scholarbridge_code_processing_" + currentUser.id;
+    const started = Date.now();
+
+    localStorage.setItem(key, String(started));
+
+    if (input) input.value = "";
+
+    if ($("verificationStatus")) {
+      $("verificationStatus").textContent =
+        "Your FBK code has been received and is processing. You may correct it if needed.";
+    }
+
+    notice(
+      "Your FBK code was received. Processing has started.",
+      "success"
+    );
+
+    // Keep the user on the code page for up to three hours.
+    // This is a browser-side timer, not a server-enforced deadline.
+    const endAt = started + 3 * 60 * 60 * 1000;
+
+    ensureVerificationView();
+    showView("verificationView");
+    showPersonalReminder();
+
+    const finishProcessing = async () => {
+      localStorage.removeItem(key);
+      await routeUser(currentUser);
+    };
+
+    const remaining = endAt - Date.now();
+
+    if (remaining <= 0) {
+      await finishProcessing();
+    } else {
+      setTimeout(finishProcessing, remaining);
+    }
+
+  } catch (error) {
+    console.error("FBK submission error:", error);
+    showError(
+      "Could not submit your FBK code: " +
+      (error.message || "Please try again.")
+    );
+  } finally {
+    setButtonLoading(button, false);
+  }
   }
 
   async function refreshActivationStatus() {
