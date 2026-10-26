@@ -109,7 +109,7 @@
         button.textContent = button.dataset.oldText || button.textContent;
       }
     }
-  }
+  
   function money(value) {
     const n = Number(value || 0);
     return "KES " + n.toLocaleString("en-KE", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
