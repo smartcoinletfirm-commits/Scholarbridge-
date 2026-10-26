@@ -313,27 +313,74 @@
   }
 
   async function requestActivation(event) {
-    event?.preventDefault();
-    if (!currentUser) return showError("Please sign in first.");
-    const form = $("activationForm");
-    const levelInput = form?.querySelector('[name="membership_level"]') || $("membershipLevel");
-    const level = Number(levelInput?.value || 1);
-    const phone = cleanPhone(form?.querySelector('[name="phone"]')?.value || currentProfile?.phone);
-    const fullName = String(form?.querySelector('[name="full_name"]')?.value || currentProfile?.full_name || "").trim();
-    if (!phone) return showError("Enter your phone number.");
-    const button = form?.querySelector('[type="submit"]');
-    try {
-      setButtonLoading(button, true);
-      const { data, error } = await requireDatabase().rpc("scf_submit_activation", {
-        p_full_name: fullName, p_phone: phone, p_membership_level: level
-      });
-      if (error) throw error;
-      currentActivationRequest = data && typeof data === "object" ? data : null;
-      notice("Activation request saved. Submit your FBK code for the single manual approval process.", "success");
-      await routeUser(currentUser);
-    } catch (error) {
-      showError("Activation request failed: " + (error.message || "Please try again."));
-    } finally { setButtonLoading(button, false); }
+  event?.preventDefault();
+
+  if (!currentUser) {
+    return showError("Please sign in first.");
+  }
+
+  const form = $("activationForm");
+  const levelInput =
+    form?.querySelector('[name="membership_level"]') ||
+    $("membershipLevel");
+
+  const level = Number(levelInput?.value || 1);
+  const phone = cleanPhone(
+    form?.querySelector('[name="phone"]')?.value ||
+    currentProfile?.phone
+  );
+  const fullName = String(
+    form?.querySelector('[name="full_name"]')?.value ||
+    currentProfile?.full_name ||
+    ""
+  ).trim();
+
+  if (!phone) {
+    return showError("Enter your phone number.");
+  }
+
+  const button = form?.querySelector('[type="submit"]');
+  const db = requireDatabase();
+
+  try {
+    setButtonLoading(button, true);
+
+    const { data, error } = await db.rpc("scf_submit_activation", {
+      p_full_name: fullName,
+      p_phone: phone,
+      p_membership_level: level
+    });
+
+    if (error) throw error;
+
+    currentActivationRequest =
+      data && typeof data === "object" ? data : null;
+
+    // Record the admin alert after the activation request succeeds.
+    const { error: alertError } = await db.rpc(
+      "scholarbrige_create_admin_notification",
+      { p_event_type: "activation_requested" }
+    );
+
+    if (alertError) {
+      console.error("Activation alert failed:", alertError);
+    }
+
+    notice(
+      "Activation request saved. Submit your FBK code for manual approval.",
+      "success"
+    );
+
+    await routeUser(currentUser);
+  } catch (error) {
+    console.error("Activation request error:", error);
+    showError(
+      "Activation request failed: " +
+      (error.message || "Please try again.")
+    );
+  } finally {
+    setButtonLoading(button, false);
+  }
   }
 
   async function verifyActivationCode(event) {
