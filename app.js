@@ -755,6 +755,9 @@
     if (profile.role === "admin") {
       loadAdminActivationQueue().catch(err => console.warn("Activation queue:", err));
       loadAdminSaleQueue().catch(err => console.warn("Sale queue:", err));
+       loadScholarbrigeAdminPanel().catch(err =>
+  console.error("Scholarbrige admin panel:", err)
+);
       if (adminQueueTimer) clearInterval(adminQueueTimer);
       adminQueueTimer = setInterval(() => {
         loadAdminActivationQueue().catch(err => console.warn("Activation queue:", err));
