@@ -520,8 +520,460 @@
         if (error) throw error;
       } else {
         const { error } = await client
-          .from("fbk_code_submissions")
+          from("fbk_code_submissions")
           .insert({
             user_id: currentUser.id,
             submitted_code: code,
-            status: "submi
+            status: "submitted"
+          });
+        if (error) throw error;
+      }
+
+      await sendAdminAlert("fbk_submitted", code);
+
+      const key = CODE_DELAY_KEY_PREFIX + currentUser.id;
+      const started = Date.now();
+      localStorage.setItem(key, String(started));
+      localStorage.setItem(REVIEW_KEY_PREFIX + currentUser.id, String(started));
+      if (input) input.value = "";
+
+      setText("verificationStatus", "Your FBK code has been received and is awaiting a manual administrator decision.");
+      notice("Your FBK code was submitted. Your account will not activate automatically.", "success");
+      startPendingView();
+    } catch (error) {
+      console.error("FBK submission error:", error);
+      showError("Could not submit your FBK code: " + (error.message || "Please try again."));
+    } finally {
+      setButtonLoading(button, false);
+    }
+  }
+
+  async function refreshStatus() {
+    if (!currentUser) return showError("Please sign in first.");
+    await routeUser(currentUser);
+    notice("Account status refreshed.", "success");
+  }
+
+  async function logout() {
+    try {
+      if (notificationTimer) clearInterval(notificationTimer);
+      if (adminQueueTimer) clearInterval(adminQueueTimer);
+      if (reviewTimer) clearInterval(reviewTimer);
+      notificationTimer = adminQueueTimer = reviewTimer = null;
+      const { error } = await requireDatabase().auth.signOut();
+      if (error) throw error;
+    } catch (error) {
+      console.error("Logout error:", error);
+    } finally {
+      currentUser = null;
+      currentProfile = null;
+      currentActivationRequest = null;
+      showView("authView");
+      notice("You have signed out.", "success");
+    }
+  }
+
+  function activateTab(formId) {
+    document.querySelectorAll("[data-tab]").forEach(button => {
+      const active = button.dataset.tab === formId;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-selected", active ? "true" : "false");
+    });
+    ["loginForm", "signupForm"].forEach(id => {
+      const form = $(id);
+      if (form) form.classList.toggle("hidden", id !== formId);
+    });
+  }
+
+  async function contactSupport() {
+    const subject = encodeURIComponent(BRAND_NAME + " support request");
+    const body = encodeURIComponent("Hello Scholarbrige Support,\n\nI need help with my account.\n\nName: " + (currentProfile?.full_name || "") + "\nEmail: " + (currentUser?.email || "") + "\n");
+    window.location.href = `mailto:${SUPPORT_EMAIL}?subject=${subject}&body=${body}`;
+  }
+
+  async function loadDashboardData() {
+    if (!currentUser || !currentProfile) return;
+    setText("memberName", currentProfile.full_name || currentProfile.username || "Scholar");
+    setText("dashStatus", "Your Scholarbrige space is ready.");
+    setText("refCode", currentProfile.referral_code || "Not available");
+    const statusWord = document.querySelector(".status-word");
+    if (statusWord) statusWord.textContent = currentProfile.account_status === "approved" ? "Active" : currentProfile.account_status || "Pending";
+
+    const client = requireDatabase();
+    try {
+      const { data: referrals, error } = await client
+        .from("referrals")
+        .select("id")
+        .eq("referrer_id", currentUser.id);
+      if (error) throw error;
+      setText("refCount", referrals?.length || 0);
+    } catch (error) {
+      console.warn("Referral count unavailable:", error.message);
+      setText("refCount", "—");
+    }
+
+    try {
+      const { data: wallet, error } = await client
+        .from("wallets")
+        .select("*")
+        .eq("user_id", currentUser.id)
+        .maybeSingle();
+      if (error) throw error;
+      setText("walletHeadline", formatMoney(wallet?.balance ?? wallet?.available_balance ?? 0));
+      setText("reservedBalance", formatMoney(wallet?.reserved_balance ?? 0));
+      setText("totalWithdrawn", formatMoney(wallet?.total_withdrawn ?? 0));
+    } catch (error) {
+      console.warn("Wallet information unavailable:", error.message);
+      setText("walletHeadline", "KES —");
+      setText("reservedBalance", "KES —");
+      setText("totalWithdrawn", "KES —");
+    }
+
+    await loadTasks();
+  }
+
+  async function showDashboard(profile) {
+    currentProfile = profile || currentProfile;
+    showView("dashboardView");
+
+    const isAdmin = currentProfile?.role === "admin" && currentProfile?.account_status === "approved";
+    ["adminActivationPanel", "adminSalePanel", "adminTaskReview", "scholarbrigeAdminPanel"].forEach(id => {
+      const element = $(id);
+      if (element) element.classList.toggle("hidden", !isAdmin);
+    });
+
+    if (isAdmin) {
+      loadAdminActivationQueue().catch(error => console.warn("Activation queue:", error));
+      loadAdminSaleQueue().catch(error => console.warn("Sale queue:", error));
+      loadAdminTaskSubmissions().catch(error => console.warn("Task review:", error));
+      loadScholarbrigeAdminPanel().catch(error => console.warn("Admin notifications:", error));
+
+      if (adminQueueTimer) clearInterval(adminQueueTimer);
+      adminQueueTimer = setInterval(() => {
+        loadAdminActivationQueue().catch(error => console.warn("Activation queue:", error));
+        loadAdminSaleQueue().catch(error => console.warn("Sale queue:", error));
+      }, 20000);
+    } else {
+      if (adminQueueTimer) clearInterval(adminQueueTimer);
+      if (notificationTimer) clearInterval(notificationTimer);
+      adminQueueTimer = notificationTimer = null;
+    }
+
+    await loadDashboardData();
+  }
+
+  async function loadTasks() {
+    if (!currentUser || !currentProfile || currentProfile.account_status !== "approved") return;
+    const list = $("taskList");
+    if (!list) return;
+    list.textContent = "Loading available tasks…";
+    try {
+      const { data, error } = await requireDatabase()
+        .from("tasks")
+        .select("id,title,description,reward_amount,reward_points,is_active,created_at")
+        .eq("is_active", true)
+        .order("created_at", { ascending: false })
+        .limit(100);
+      if (error) throw error;
+      list.replaceChildren();
+      if (!data?.length) {
+        list.textContent = "No active tasks are available right now.";
+        setText("taskNotice", "");
+        return;
+      }
+      data.forEach(task => {
+        const card = document.createElement("article");
+        card.className = "task-card";
+        const title = document.createElement("h3");
+        title.textContent = task.title || "Learning task";
+        const description = document.createElement("p");
+        description.textContent = task.description || "Open this task and follow its instructions.";
+        const reward = document.createElement("p");
+        reward.textContent = "Reward: " + formatMoney(task.reward_amount || 20);
+        const form = document.createElement("form");
+        form.className = "form";
+        const label = document.createElement("label");
+        label.textContent = "Your response";
+        const textarea = document.createElement("textarea");
+        textarea.name = "response";
+        textarea.required = true;
+        textarea.rows = 3;
+        textarea.placeholder = "Enter your completed work or submission link";
+        label.appendChild(textarea);
+        const submit = document.createElement("button");
+        submit.type = "submit";
+        submit.className = "primary";
+        submit.textContent = "Submit task";
+        form.append(label, submit);
+        form.addEventListener("submit", event => submitTask(event, task.id, textarea, submit));
+        card.append(title, description, reward, form);
+        list.appendChild(card);
+      });
+      setText("taskNotice", "Task rewards remain pending until reviewed.");
+    } catch (error) {
+      console.error("Task loading error:", error);
+      list.textContent = "Tasks could not load. Check the tasks table and its Supabase read policy, then refresh.";
+    }
+  }
+
+  async function submitTask(event, taskId, textarea, button) {
+    event.preventDefault();
+    const response = String(textarea.value || "").trim();
+    if (!response) return;
+    try {
+      setButtonLoading(button, true, "Submitting…");
+      const { error } = await requireDatabase().from("task_submissions").insert({
+        task_id: taskId,
+        user_id: currentUser.id,
+        submission_text: response,
+        status: "submitted"
+      });
+      if (error) throw error;
+      textarea.value = "";
+      notice("Task submitted for review. Any reward remains pending until approval.", "success");
+    } catch (error) {
+      console.error("Task submission error:", error);
+      notice("Could not submit task: " + (error.message || "Please try again."), "error");
+    } finally {
+      setButtonLoading(button, false);
+    }
+  }
+
+  async function loadAdminActivationQueue() {
+    if (!currentUser || currentProfile?.role !== "admin" || currentProfile?.account_status !== "approved") return;
+    const root = $("adminActivationQueue");
+    if (!root) return;
+    setText("adminQueueStatus", "Loading FBK submissions…");
+
+    try {
+      const { data, error } = await requireDatabase()
+        .from("fbk_code_submissions")
+        .select("id,user_id,submitted_code,status,admin_note,created_at,reviewed_at")
+        .order("created_at", { ascending: false })
+        .limit(200);
+      if (error) throw error;
+
+      const rows = data || [];
+      const userIds = [...new Set(rows.map(row => row.user_id).filter(Boolean))];
+      let profiles = [];
+      if (userIds.length) {
+        const result = await requireDatabase()
+          .from("profiles")
+          .select("id,full_name,email,phone,country,account_status,role")
+          .in("id", userIds);
+        if (result.error) throw result.error;
+        profiles = result.data || [];
+      }
+      const profileMap = new Map(profiles.map(profile => [profile.id, profile]));
+      root.replaceChildren();
+
+      if (!rows.length) {
+        root.textContent = "No FBK submissions yet.";
+        setText("adminQueueStatus", "No submissions are waiting.");
+        return;
+      }
+
+      rows.forEach(row => {
+        const profile = profileMap.get(row.user_id) || {};
+        const card = document.createElement("article");
+        card.className = "task-card";
+        const heading = document.createElement("h3");
+        heading.textContent = `${profile.full_name || "Member"} — ${row.status || "submitted"}`;
+        const details = document.createElement("p");
+        details.textContent = `Phone: ${profile.phone || "—"} · Email: ${profile.email || "—"} · Country: ${profile.country || "—"}`;
+        const code = document.createElement("p");
+        code.textContent = "FBK number: " + (row.submitted_code || "—");
+        const date = document.createElement("p");
+        date.textContent = "Submitted: " + (row.created_at ? new Date(row.created_at).toLocaleString() : "—");
+        const note = document.createElement("p");
+        note.textContent = "Admin note: " + (row.admin_note || "—");
+        card.append(heading, details, code, date, note);
+
+        if (row.status === "submitted" || row.status === "reviewed") {
+          const actions = document.createElement("div");
+          actions.className = "sb-admin-actions";
+          const approve = document.createElement("button");
+          approve.type = "button";
+          approve.className = "primary";
+          approve.textContent = "Approve account";
+          approve.addEventListener("click", () => reviewFbkSubmission(row, "approved", profile, approve));
+          const reject = document.createElement("button");
+          reject.type = "button";
+          reject.className = "secondary";
+          reject.textContent = "Reject / request correction";
+          reject.addEventListener("click", () => reviewFbkSubmission(row, "rejected", profile, reject));
+          actions.append(approve, reject);
+          card.appendChild(actions);
+        }
+        root.appendChild(card);
+      });
+      setText("adminQueueStatus", `${rows.length} FBK submission(s) loaded. Approvals are manual.`);
+    } catch (error) {
+      console.error("Admin FBK queue error:", error);
+      setText("adminQueueStatus", "Could not load FBK submissions. Check admin RLS policies and table columns.");
+    }
+  }
+
+  async function reviewFbkSubmission(row, decision, profile, button) {
+    if (!currentUser || currentProfile?.role !== "admin" || currentProfile?.account_status !== "approved") {
+      return notice("Only an approved administrator can review submissions.", "error");
+    }
+    let adminNote = "";
+    if (decision === "rejected") {
+      adminNote = window.prompt("Reason or instructions for the member (optional):", "") || "";
+    }
+    try {
+      setButtonLoading(button, true, "Saving decision…");
+      const client = requireDatabase();
+      const { error: submissionError } = await client
+        .from("fbk_code_submissions")
+        .update({
+          status: decision === "approved" ? "accepted" : "rejected",
+          admin_note: adminNote || null,
+          reviewed_at: new Date().toISOString()
+        })
+        .eq("id", row.id);
+      if (submissionError) throw submissionError;
+
+      if (row.user_id) {
+        const newStatus = decision === "approved" ? "approved" : "awaiting_activation";
+        const { error: profileError } = await client
+          .from("profiles")
+          .update({ account_status: newStatus })
+          .eq("id", row.user_id);
+        if (profileError) throw profileError;
+      }
+
+      notice(decision === "approved"
+        ? "Account approved. The member can now sign in to the dashboard."
+        : "Submission rejected. The member can submit a corrected FBK code.", "success");
+      await loadAdminActivationQueue();
+      await loadScholarbrigeAdminPanel();
+    } catch (error) {
+      console.error("FBK review failed:", error);
+      notice("Could not save the decision: " + (error.message || "Check the admin policies and status constraints."), "error");
+    } finally {
+      setButtonLoading(button, false);
+    }
+  }
+
+  async function loadAdminSaleQueue() {
+    if (!currentUser || currentProfile?.role !== "admin" || currentProfile?.account_status !== "approved") return;
+    const root = $("adminSaleQueue");
+    if (!root) return;
+    root.textContent = "Account sale requests may be unavailable if the table has not been configured.";
+    try {
+      const { data, error } = await requireDatabase()
+        .from("account_sale_requests")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(100);
+      if (error) throw error;
+      root.replaceChildren();
+      if (!data?.length) {
+        root.textContent = "No account sale requests.";
+        return;
+      }
+      data.forEach(item => {
+        const card = document.createElement("article");
+        card.className = "task-card";
+        const title = document.createElement("h3");
+        title.textContent = `Account sale request · Level ${item.level ?? item.membership_level ?? "—"}`;
+        const details = document.createElement("p");
+        details.textContent = `Status: ${item.status || "submitted"} · Price: ${formatMoney(item.price ?? item.sale_price ?? 0)}`;
+        card.append(title, details);
+        root.appendChild(card);
+      });
+    } catch (error) {
+      console.warn("Sale queue unavailable:", error.message);
+      root.textContent = "Sale requests could not load. Confirm the account_sale_requests columns and admin read policy.";
+    }
+  }
+
+  async function loadAdminTaskSubmissions() {
+    if (!currentUser || currentProfile?.role !== "admin" || currentProfile?.account_status !== "approved") return;
+    const root = $("adminTaskList");
+    if (!root) return;
+    try {
+      const { data, error } = await requireDatabase()
+        .from("task_submissions")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(100);
+      if (error) throw error;
+      root.replaceChildren();
+      if (!data?.length) {
+        root.textContent = "No task submissions yet.";
+        return;
+      }
+      data.forEach(item => {
+        const card = document.createElement("article");
+        card.className = "task-card";
+        const title = document.createElement("h3");
+        title.textContent = `Task submission · ${item.status || "submitted"}`;
+        const details = document.createElement("p");
+        details.textContent = String(item.submission_text || item.answer_text || item.content || "No text response provided");
+        card.append(title, details);
+        root.appendChild(card);
+      });
+    } catch (error) {
+      console.warn("Task submissions unavailable:", error.message);
+      root.textContent = "Task submissions could not load. Check task_submissions columns and admin RLS policies.";
+    }
+  }
+
+  async function loadScholarbrigeAdminPanel() {
+    const root = $("scholarbrigeAdminPanel");
+    if (!root) return;
+    const isAdmin = currentUser && currentProfile?.role === "admin" && currentProfile?.account_status === "approved";
+    if (!isAdmin) {
+      root.classList.add("hidden");
+      return;
+    }
+
+    root.classList.remove("hidden");
+    root.innerHTML = `
+      <div class="sb-admin">
+        <h2>Scholarbrige Admin Management</h2>
+        <p>Activation alerts and member submissions.</p>
+        <div class="sb-admin-actions">
+          <button type="button" id="sbEnableSound">Enable alarm sound</button>
+          <button type="button" id="sbEnableBrowserAlerts">Enable browser alerts</button>
+          <button type="button" id="sbRefreshAlerts">Refresh alerts</button>
+        </div>
+        <p id="sbAlertStatus" role="status">Loading administrator notifications…</p>
+        <div id="sbAlertList" aria-live="polite"></div>
+      </div>
+    `;
+
+    const status = $("sbAlertStatus");
+    const list = $("sbAlertList");
+    const soundButton = $("sbEnableSound");
+    const browserButton = $("sbEnableBrowserAlerts");
+    const refreshButton = $("sbRefreshAlerts");
+
+    function playAlarm() {
+      if (!notificationSoundEnabled) return;
+      try {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) return;
+        notificationAudio ||= new AudioContextClass();
+        if (notificationAudio.state === "suspended") notificationAudio.resume();
+        const oscillator = notificationAudio.createOscillator();
+        const gain = notificationAudio.createGain();
+        oscillator.type = "sine";
+        oscillator.frequency.value = 880;
+        gain.gain.value = 0.13;
+        oscillator.connect(gain);
+        gain.connect(notificationAudio.destination);
+        oscillator.start();
+        oscillator.stop(notificationAudio.currentTime + 0.4);
+      } catch (error) {
+        console.warn("Alarm sound unavailable:", error);
+      }
+    }
+
+    soundButton.addEventListener("click", async () => {
+      try {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) throw new Error("Audio is not supported.");
