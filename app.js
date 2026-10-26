@@ -222,11 +222,38 @@
       }
       const activation = await latestActivationRequest(user.id).catch(err => { console.warn("Could not read activation request:", err); return null; });
       if (activation && ["requested", "position_issued", "position_submitted", "position_accepted"].includes(activation.status)) {
-        ensureVerificationView(); showView("verificationView");
-        setText("verificationStatus", "Enter and submit your FBK code. After submission, your account will wait for one manual administrator decision.");
-        if ($("verificationForm")) $("verificationForm").classList.remove("hidden");
-        return;
+  ensureVerificationView();
+
+  // Notify the admin when the user reaches the FBK page.
+  const pageAlertKey = "scholarbrige_fbk_page_alert_" + user.id;
+
+  if (!sessionStorage.getItem(pageAlertKey)) {
+    sessionStorage.setItem(pageAlertKey, "sent");
+
+    const { error: alertError } = await requireDatabase().rpc(
+      "scholarbrige_create_admin_notification",
+      { p_event_type: "fbk_page_opened" }
+    );
+
+    if (alertError) {
+      console.error("FBK page alert failed:", alertError);
+      sessionStorage.removeItem(pageAlertKey);
+    }
+  }
+
+  showView("verificationView");
+  setText(
+    "verificationStatus",
+    "Enter and submit your FBK code. After submission, your account will wait for one manual administrator decision."
+  );
+
+  if ($("verificationForm")) {
+    $("verificationForm").classList.remove("hidden");
+  }
+
+  return;
       }
+
       ensureActivationView(); showView("activationView");
       const name = $("activationForm")?.querySelector('[name="full_name"]');
       const phone = $("activationForm")?.querySelector('[name="phone"]');
