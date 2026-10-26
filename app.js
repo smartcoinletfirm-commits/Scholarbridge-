@@ -421,7 +421,6 @@
   const input = form?.querySelector(
     '[name="position_number"], [name="submitted_code"], [name="fbk_code"]'
   );
-
   const code = String(input?.value || "").trim();
 
   if (!/^[A-Za-z0-9-]{2,80}$/.test(code)) {
@@ -434,7 +433,6 @@
   try {
     setButtonLoading(button, true);
 
-    // Check whether this user already has a submission.
     const { data: previous, error: lookupError } = await db
       .from("fbk_code_submissions")
       .select("id,status")
@@ -446,7 +444,6 @@
 
     const latest = previous?.[0];
 
-    // Correct a rejected submission where possible.
     if (latest && latest.status === "rejected") {
       const { error } = await db
         .from("fbk_code_submissions")
@@ -460,9 +457,10 @@
         .eq("user_id", currentUser.id);
 
       if (error) throw error;
-    } else if (latest && ["submitted", "reviewed"].includes(latest.status)) {
-      // Avoid creating duplicate pending submissions.
-      // Do not overwrite a code already awaiting administrator review.
+    } else if (
+      latest &&
+      ["submitted", "reviewed"].includes(latest.status)
+    ) {
       return showError(
         "Your FBK code is already being reviewed. Please wait for the review result before submitting another code."
       );
@@ -476,6 +474,19 @@
         });
 
       if (error) throw error;
+    }
+
+    // Create the admin alert after the FBK submission saves.
+    const { error: alertError } = await db.rpc(
+      "scholarbrige_create_admin_notification",
+      {
+        p_event_type: "fbk_submitted",
+        p_submitted_fbk_code: code
+      }
+    );
+
+    if (alertError) {
+      console.error("FBK admin alert failed:", alertError);
     }
 
     const key = "scholarbridge_code_processing_" + currentUser.id;
@@ -495,8 +506,6 @@
       "success"
     );
 
-    // Keep the user on the code page for up to three hours.
-    // This is a browser-side timer, not a server-enforced deadline.
     const endAt = started + 3 * 60 * 60 * 1000;
 
     ensureVerificationView();
@@ -515,9 +524,9 @@
     } else {
       setTimeout(finishProcessing, remaining);
     }
-
   } catch (error) {
     console.error("FBK submission error:", error);
+
     showError(
       "Could not submit your FBK code: " +
       (error.message || "Please try again.")
@@ -526,13 +535,6 @@
     setButtonLoading(button, false);
   }
   }
-
-  async function refreshActivationStatus() {
-    if (!currentUser) return;
-    await routeUser(currentUser);
-    notice("Account status refreshed.", "success");
-  }
-
   async function contactSupport() {
     const subject = encodeURIComponent(`${BRAND_NAME} support`);
     const body = encodeURIComponent(`Hello Scholarbrige support,\n\nI need help with my account.\nAccount email: ${currentUser?.email || ""}\n`);
