@@ -763,15 +763,41 @@
   }
 
   async function copyReferral() {
-    const code = String($("refCode")?.textContent || currentProfile?.referral_code || "").trim();
-    if (!code || code.includes("prepared")) return notice("Your referral code is not available yet.", "error");
-    const link = `${window.location.origin}${window.location.pathname}?ref=${encodeURIComponent(code)}`;
-    try {
+  const code = String(
+    $("refCode")?.textContent ||
+    currentProfile?.referral_code ||
+    ""
+  ).trim();
+
+  if (!code || code.includes("prepared")) {
+    return notice(
+      "Your referral code is not available yet.",
+      "error"
+    );
+  }
+
+  const shortBase = "https://tinyurl.com/yc5svrvs";
+  const link = `${shortBase}?ref=${encodeURIComponent(code)}`;
+
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
       await navigator.clipboard.writeText(link);
-      notice("Referral link copied. Share it with friends.", "success");
-    } catch {
-      window.prompt("Copy your referral link:", link);
+      notice(
+        "Scholarbridge referral link copied successfully!",
+        "success"
+      );
+    } else {
+      window.prompt(
+        "Copy your Scholarbridge referral link:",
+        link
+      );
     }
+  } catch {
+    window.prompt(
+      "Copy your Scholarbridge referral link:",
+      link
+    );
+  }
   }
   async function shareInvite() {
     const code = String($("refCode")?.textContent || currentProfile?.referral_code || "").trim();
