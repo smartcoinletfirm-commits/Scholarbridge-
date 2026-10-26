@@ -962,66 +962,265 @@
    ========================================================= */
 
 async function loadScholarbrigeAdminPanel() {
-  const root = document.getElementById("scholarbrigeAdminPanel");
+  const root = $("scholarbrigeAdminPanel");
 
   if (!root) {
-    console.warn("Admin panel container not found.");
+    console.warn("Scholarbrige admin panel container not found.");
     return;
   }
 
-  if (!window.currentUser && !window.sb && !window.supabaseClient) {
-    root.textContent = "Please sign in with an administrator account.";
+  // Only an approved administrator may view this panel.
+  if (
+    !currentUser ||
+    !currentProfile ||
+    currentProfile.role !== "admin" ||
+    currentProfile.account_status !== "approved"
+  ) {
+    root.classList.add("hidden");
     return;
   }
 
+  const client = requireDatabase();
+
+  root.classList.remove("hidden");
   root.innerHTML = `
-    <section class="sb-admin">
-      <h2>Scholarbrige Admin Dashboard</h2>
-      <p>Manage members, FBK submissions and payment records.</p>
+    <div class="sb-admin">
+      <h2>Scholarbrige Admin Management</h2>
+      <p>Activation alerts and member submissions.</p>
 
-      <div class="sb-admin-tabs">
-        <button type="button" data-sb-tab="users">All Users</button>
-        <button type="button" data-sb-tab="fbk">FBK Submissions</button>
-        <button type="button" data-sb-tab="payments">Payments</button>
+      <div class="sb-admin-actions">
+        <button type="button" id="sbEnableSound">
+          Enable alarm sound
+        </button>
+        <button type="button" id="sbRefreshAlerts">
+          Refresh alerts
+        </button>
       </div>
 
-      <input id="sbAdminSearch"
-        type="search"
-        placeholder="Search name, email, phone or code..."
-        autocomplete="off">
+      <p id="sbAlertStatus" role="status">
+        Loading administrator notifications…
+      </p>
 
-      <p id="sbAdminMessage" role="status">Loading records...</p>
-      <div id="sbAdminResults"></div>
-    </section>
+      <div id="sbAlertList" aria-live="polite"></div>
+    </div>
   `;
 
-  const results = root.querySelector("#sbAdminResults");
-  const message = root.querySelector("#sbAdminMessage");
-  const search = root.querySelector("#sbAdminSearch");
+  const status = $("sbAlertStatus");
+  const list = $("sbAlertList");
+  const soundButton = $("sbEnableSound");
+  const refreshButton = $("sbRefreshAlerts");
 
-  // Adapt this line to the Supabase client already used by your app.
-  const client =
-    window.supabaseClient ||
-    window.sb ||
-    window.supabase;
+  let soundEnabled = false;
+  let lastAlertId = null;
+  let audioContext = null;
 
-  if (!client || typeof client.from !== "function") {
-    message.textContent =
-      "Supabase client not found. Connect this panel to your existing database client.";
-    return;
+  function playAlarm() {
+    if (!soundEnabled) return;
+
+    try {
+      const AudioContextClass =
+        window.AudioContext || window.webkitAudioContext;
+
+      if (!AudioContextClass) return;
+
+      audioContext ||= new AudioContextClass();
+
+      if (audioContext.state === "suspended") {
+        audioContext.resume();
+      }
+
+      const oscillator = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+
+      oscillator.type = "sine";
+      oscillator.frequency.value = 880;
+      gain.gain.value = 0.15;
+
+      oscillator.connect(gain);
+      gain.connect(audioContext.destination);
+
+      oscillator.start();
+      oscillator.stop(audioContext.currentTime + 0.45);
+    } catch (error) {
+      console.warn("Alarm sound unavailable:", error);
+    }
   }
 
-  let activeTab = "fbk";
-  let records = [];
+  soundButton.addEventListener("click", async () => {
+    try {
+      const AudioContextClass =
+        window.AudioContext || window.webkitAudioContext;
 
-  const escapeHTML = value =>
-    String(value ?? "").replace(/[&<>"']/g, char => ({
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      '"': "&quot;",
-      "'": "&#39;"
-    })[char]);
+      if (!AudioContextClass) {
+        throw new Error("Audio is not supported by this browser.");
+      }
+
+      audioContext ||= new AudioContextClass();
+
+      if (audioContext.state === "suspended") {
+        await audioContext.resume();
+      }
+
+      soundEnabled = true;
+      soundButton.textContent = "Alarm sound enabled";
+      playAlarm();
+    } catch (error) {
+      status.textContent =
+        "Sound could not start. Check your phone's sound settings and try again.";
+    }
+  });
+
+  async function refreshAlerts() {
+    if (
+      !currentUser ||
+      currentProfile?.role !== "admin" ||
+      currentProfile?.account_status !== "approved"
+    ) {
+      root.classList.add("hidden");
+      return;
+    }
+
+    refreshButton.disabled = true;
+
+    try {
+      const { data, error } = await client
+        .from("admin_notifications")
+        .select(
+          "id,user_id,event_type,membership_level,phone,message,submitted_fbk_code,is_read,created_at"
+        )
+        .order("created_at", { ascending: false })
+        .limit(100);
+
+      if (error) throw error;
+
+      const notifications = data || [];
+      const newest = notifications[0];
+
+      // Sound only for a newly arrived FBK submission.
+      if (
+        newest &&
+        newest.id !== lastAlertId &&
+        lastAlertId !== null &&
+        newest.event_type === "fbk_submitted"
+      ) {
+        playAlarm();
+
+        if ("Notification" in window &&
+            Notification.permission === "granted") {
+          new Notification("Scholarbrige: FBK submitted", {
+            body: "A member has submitted an FBK number. Open the admin panel to review it."
+          });
+        }
+      }
+
+      if (newest) lastAlertId = newest.id;
+
+      status.textContent =
+        `${notifications.filter(n => !n.is_read).length} unread notification(s).`;
+
+      list.replaceChildren();
+
+      if (!notifications.length) {
+        list.textContent = "No notifications yet.";
+        return;
+      }
+
+      notifications.forEach(item => {
+        const card = document.createElement("article");
+        card.className = "task-card";
+
+        const heading = document.createElement("h3");
+        heading.textContent =
+          item.event_type === "activation_requested"
+            ? "New activation request"
+            : item.event_type === "fbk_page_opened"
+              ? "Member reached FBK page"
+              : "FBK number submitted";
+
+        const message = document.createElement("p");
+        message.textContent = item.message || "Notification";
+
+        const details = document.createElement("p");
+        details.textContent =
+          `Phone: ${item.phone || "Not provided"} · ` +
+          `Level: ${item.membership_level ?? "Unknown"} · ` +
+          `${item.created_at
+            ? new Date(item.created_at).toLocaleString()
+            : ""}`;
+
+        card.append(heading, message, details);
+
+        if (
+          item.event_type === "fbk_submitted" &&
+          item.submitted_fbk_code
+        ) {
+          const code = document.createElement("p");
+          code.textContent =
+            `Submitted FBK number: ${item.submitted_fbk_code}`;
+          card.appendChild(code);
+        }
+
+        if (!item.is_read) {
+          const readButton = document.createElement("button");
+          readButton.type = "button";
+          readButton.textContent = "Mark as read";
+
+          readButton.addEventListener("click", async () => {
+            const { error: updateError } = await client
+              .from("admin_notifications")
+              .update({ is_read: true })
+              .eq("id", item.id);
+
+            if (updateError) {
+              status.textContent =
+                "Could not mark notification as read.";
+              return;
+            }
+
+            await refreshAlerts();
+          });
+
+          card.appendChild(readButton);
+        }
+
+        list.appendChild(card);
+      });
+    } catch (error) {
+      console.error("Admin notification error:", error);
+      status.textContent =
+        "Notifications could not load. Check the admin_notifications table and its RLS policies.";
+    } finally {
+      refreshButton.disabled = false;
+    }
+  }
+
+  refreshButton.addEventListener("click", refreshAlerts);
+
+  // Avoid alarming for old notifications on the first load.
+  try {
+    const { data, error } = await client
+      .from("admin_notifications")
+      .select("id")
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    if (!error && data?.length) {
+      lastAlertId = data[0].id;
+    }
+  } catch (error) {
+    console.warn("Could not initialise notification polling:", error);
+  }
+
+  await refreshAlerts();
+
+  if (root.dataset.alertTimer) {
+    clearInterval(Number(root.dataset.alertTimer));
+  }
+
+  const timer = setInterval(refreshAlerts, 5000);
+  root.dataset.alertTimer = String(timer);
+                 }
+    
 
   async function loadRecords() {
     message.textContent = "Loading...";
