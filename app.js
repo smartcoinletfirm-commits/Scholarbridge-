@@ -824,25 +824,16 @@
     }
     try {
       setButtonLoading(button, true, "Saving decision…");
-      const client = requireDatabase();
-      const { error: submissionError } = await client
-        .from("fbk_code_submissions")
-        .update({
-          status: decision === "approved" ? "accepted" : "rejected",
-          admin_note: adminNote || null,
-          reviewed_at: new Date().toISOString()
-        })
-        .eq("id", row.id);
-      if (submissionError) throw submissionError;
+      const { error } = await requireDatabase().rpc(
+  "scholarbrige_admin_review_fbk",
+  {
+    p_submission_id: row.id,
+    p_decision: decision,
+    p_admin_note: adminNote || null
+  }
+);
 
-      if (row.user_id) {
-        const newStatus = decision === "approved" ? "approved" : "awaiting_activation";
-        const { error: profileError } = await client
-          .from("profiles")
-          .update({ account_status: newStatus })
-          .eq("id", row.user_id);
-        if (profileError) throw profileError;
-      }
+if (error) throw error;
 
       notice(decision === "approved"
         ? "Account approved. The member can now sign in to the dashboard."
