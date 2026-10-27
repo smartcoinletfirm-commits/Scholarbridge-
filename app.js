@@ -668,7 +668,7 @@ async function routeUser(user = currentUser) {
     try {
       const { data, error } = await requireDatabase()
         .from("tasks")
-        .select("id,title,description,reward_amount,reward_points,is_active,created_at")
+        .select("id,title,description,reward_kes,reward_points,is_active,created_at")
         .eq("is_active", true)
         .order("created_at", { ascending: false })
         .limit(100);
