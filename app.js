@@ -667,18 +667,17 @@ async function routeUser(user = currentUser) {
     list.textContent = "Loading available tasks…";
     try {
       const { data, error } = await requireDatabase()
-        .from("tasks")
-        .select("id,title,description,reward_kes,reward_points,is_active,created_at")
-        .eq("is_active", true)
-        .order("created_at", { ascending: false })
-        .limit(100);
-      if (error) throw error;
-      list.replaceChildren();
-      if (!data?.length) {
-        list.textContent = "No active tasks are available right now.";
-        setText("taskNotice", "");
-        return;
-      }
+  .from("tasks")
+  .select("id,title,description,task_type,reward_points,reward_kes,is_active,requires_review,created_at")
+  .eq("is_active", true)
+  .order("created_at", { ascending: false })
+  .limit(100);
+
+if (error) {
+  console.error("Task loading error:", error);
+  showTaskError(error);
+  return;
+}
       data.forEach(task => {
         const card = document.createElement("article");
         card.className = "task-card";
