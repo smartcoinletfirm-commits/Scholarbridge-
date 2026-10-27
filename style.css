@@ -74,5 +74,293 @@
   #scholarbrigeAdminPanel .sb-admin-table {
     font-size: 11px;
   }
+
+  /* SCHOLARBRIGE PUBLIC HALL OF FAME */
+.hall-of-fame {
+  margin: 0 0 54px;
+  padding: clamp(22px, 4vw, 42px);
+  border: 1px solid rgba(192, 164, 104, .28);
+  border-radius: 26px;
+  background: linear-gradient(145deg, #092e25, #104536 58%, #09291f);
+  color: #f6f3e9;
+  box-shadow: 0 22px 55px rgba(5, 35, 26, .18);
+  overflow: hidden;
+  position: relative;
+}
+
+.hall-of-fame::before {
+  content: "S+";
+  position: absolute;
+  right: -14px;
+  top: 35px;
+  font-size: clamp(100px, 22vw, 230px);
+  line-height: 1;
+  font-weight: 800;
+  color: rgba(255, 255, 255, .035);
+  pointer-events: none;
+}
+
+.hall-heading,
+.hall-feature,
+.hall-stats,
+.hall-leaderboard,
+.hall-disclaimer {
+  position: relative;
+  z-index: 1;
+}
+
+.hall-heading {
+  max-width: 690px;
+  margin-bottom: 27px;
+}
+
+.hall-heading h2 {
+  margin: 12px 0;
+  font-size: clamp(27px, 5vw, 43px);
+  line-height: 1.13;
+  letter-spacing: -.8px;
+}
+
+.hall-heading h2 em {
+  color: #e4c580;
+  font-family: Georgia, serif;
+  font-weight: 400;
+}
+
+.hall-heading p,
+.hall-feature-copy p {
+  color: #d2e1d9;
+  line-height: 1.75;
+}
+
+.hall-feature {
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+  padding: 23px;
+  border: 1px solid rgba(226, 198, 132, .3);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, .055);
+}
+
+.hall-feature-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 48px;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: rgba(226, 198, 132, .14);
+  color: #e4c580;
+  font-size: 25px;
+}
+
+.hall-label,
+.hall-stats article > small {
+  color: #e4c580;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+}
+
+.hall-feature-copy h3 {
+  margin: 9px 0;
+  font-size: clamp(19px, 3vw, 26px);
+}
+
+.hall-feature-copy p {
+  margin: 0 0 13px;
+  font-size: 14px;
+}
+
+.hall-feature-copy > small {
+  color: #afc7ba;
+  font-size: 10px;
+  letter-spacing: 1px;
+}
+
+.hall-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 15px;
+  margin: 17px 0 30px;
+}
+
+.hall-stats article {
+  min-width: 0;
+  padding: 21px;
+  border-radius: 17px;
+  background: rgba(255, 255, 255, .07);
+  border: 1px solid rgba(255, 255, 255, .09);
+}
+
+.hall-stat-icon {
+  display: block;
+  margin-bottom: 17px;
+  font-size: 23px;
+}
+
+.hall-stats article h3 {
+  margin: 10px 0 6px;
+  overflow-wrap: anywhere;
+  font-size: clamp(17px, 3vw, 23px);
+  color: #fff8e8;
+}
+
+.hall-stats article p {
+  margin: 0;
+  color: #c3d7cc;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.hall-leaderboard {
+  padding: 23px;
+  border-radius: 18px;
+  background: rgba(3, 25, 19, .4);
+  border: 1px solid rgba(255, 255, 255, .09);
+}
+
+.hall-leaderboard-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 17px;
+}
+
+.hall-leaderboard-heading h3 {
+  margin: 8px 0 0;
+  font-size: 22px;
+}
+
+.hall-live {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #cbded3;
+  font-size: 9px;
+  letter-spacing: 1px;
+}
+
+.hall-live i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #e4c580;
+}
+
+.public-scholar-list {
+  display: grid;
+  gap: 10px;
+}
+
+.hall-empty {
+  padding: 23px 10px;
+  text-align: center;
+  color: #c3d7cc;
+}
+
+.hall-empty > span {
+  color: #e4c580;
+  font-size: 27px;
+}
+
+.hall-empty p {
+  max-width: 390px;
+  margin: 10px auto 0;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.hall-scholar {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 14px;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, .055);
+}
+
+.hall-rank {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  border-radius: 11px;
+  background: rgba(228, 197, 128, .13);
+  color: #e4c580;
+  font-weight: 800;
+}
+
+.hall-scholar-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.hall-scholar-info b {
+  display: block;
+  overflow-wrap: anywhere;
+  color: #fff;
+  font-size: 14px;
+}
+
+.hall-scholar-info small {
+  display: block;
+  margin-top: 5px;
+  color: #c3d7cc;
+  line-height: 1.5;
+}
+
+.hall-scholar-earnings {
+  text-align: right;
+  color: #e4c580;
+  font-size: 13px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.hall-disclaimer {
+  margin: 18px 0 0;
+  color: #afc7ba;
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+@media (max-width: 520px) {
+  .hall-feature {
+    padding: 17px;
+    gap: 12px;
+  }
+
+  .hall-feature-icon {
+    flex-basis: 38px;
+    width: 38px;
+    height: 38px;
+  }
+
+  .hall-stats article,
+  .hall-leaderboard {
+    padding: 15px;
+  }
+
+  .hall-leaderboard-heading {
+    align-items: flex-start;
+  }
+
+  .hall-live {
+    font-size: 8px;
+  }
+
+  .hall-scholar {
+    gap: 9px;
+    padding: 11px 8px;
+  }
+
+  .hall-scholar-earnings {
+    max-width: 90px;
+    font-size: 11px;
+  }
 }
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 
