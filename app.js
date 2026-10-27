@@ -520,7 +520,7 @@
         if (error) throw error;
       } else {
         const { error } = await client
-          from("fbk_code_submissions")
+          .from("fbk_code_submissions")
           .insert({
             user_id: currentUser.id,
             submitted_code: code,
