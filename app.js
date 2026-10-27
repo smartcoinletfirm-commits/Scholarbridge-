@@ -107,3 +107,154 @@
       }
     }
  }
+function showView(id) {
+    const views = ["authView", "activationView", "verificationView", "pendingView", "dashboardView", "supportView"];
+    views.forEach(viewId => {
+      const element = $(viewId);
+      if (element) element.classList.toggle("hidden", viewId !== id);
+    });
+    hideNotices();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function bind(id, eventName, handler) {
+    const element = $(id);
+    if (!element || element.dataset.appBound === "true") return;
+    element.addEventListener(eventName, handler);
+    element.dataset.appBound = "true";
+  }
+
+  async function loadProfile(user = currentUser) {
+    if (!user) return null;
+    const client = requireDatabase();
+    const { data, error } = await client
+      .from("profiles")
+      .select("id,full_name,username,email,phone,education_level,country,age_confirmed,referral_code,referred_by,avatar_path,theme,role,account_status,created_at,updated_at")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (error) throw error;
+    currentProfile = data || null;
+    return currentProfile;
+  }
+
+  async function latestActivationRequest(userId = currentUser?.id) {
+    if (!userId) return null;
+    const { data, error } = await requireDatabase()
+      .from("activation_requests")
+      .select("*")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    if (error) {
+      console.warn("Could not read activation request:", error.message);
+      return null;
+    }
+    currentActivationRequest = data?.[0] || null;
+    return currentActivationRequest;
+  }
+
+  async function latestFbkSubmission(userId = currentUser?.id) {
+    if (!userId) return null;
+    const { data, error } = await requireDatabase()
+      .from("fbk_code_submissions")
+      .select("id,user_id,submitted_code,status,admin_note,created_at,reviewed_at")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    if (error) {
+      console.warn("Could not read FBK submission:", error.message);
+      return null;
+    }
+    return data?.[0] || null;
+  }
+
+  async function sendAdminAlert(eventType, code = null) {
+    try {
+      const { error } = await requireDatabase().rpc("scholarbrige_create_admin_notification", {
+        p_event_type: eventType,
+        p_submitted_fbk_code: code
+      });
+      if (error) throw error;
+    } catch (error) {
+      // Notifications must never prevent a member's main action from completing.
+      console.error("Admin notification failed:", error);
+    }
+  }
+
+  function showPersonalReminder() {
+    const name = currentProfile?.full_name || "scholar";
+    notice(`Hello ${name} 👋 Please use the same WhatsApp-connected phone number for your FBK process. Submit only the correct details.`, "info");
+  }
+
+  function startReviewCountdown(startedAt) {
+    const countdown = $("reviewCountdown");
+    if (reviewTimer) clearInterval(reviewTimer);
+
+    const start = Number(startedAt) || Date.now();
+    const endAt = start + REVIEW_DURATION_MS;
+
+    const update = () => {
+      const remaining = Math.max(0, endAt - Date.now());
+      const hours = Math.floor(remaining / 3600000);
+      const minutes = Math.floor((remaining % 3600000) / 60000);
+      const seconds = Math.floor((remaining % 60000) / 1000);
+      if (countdown) {
+        countdown.textContent = [hours, minutes, seconds]
+          .map(number => String(number).padStart(2, "0")).join(":");
+      }
+      if (remaining <= 0) {
+        if (reviewTimer) clearInterval(reviewTimer);
+        reviewTimer = null;
+        setText("reviewMessage", "The estimated review window has ended. Your account still requires a manual administrator decision.");
+        const expired = $("reviewExpired");
+        if (expired) {
+          expired.textContent = "The estimated time has passed. Refresh your status to check for an administrator decision.";
+          expired.classList.remove("hidden");
+        }
+      }
+    };
+
+    update();
+    reviewTimer = setInterval(update, 1000);
+  }
+
+  function startPendingView() {
+    const key = REVIEW_KEY_PREFIX + (currentUser?.id || "unknown");
+    let started = Number(localStorage.getItem(key));
+    if (!started || !Number.isFinite(started)) {
+      started = Date.now();
+      localStorage.setItem(key, String(started));
+    }
+    showView("pendingView");
+    setText("pendingLabel", "Your FBK submission is waiting for a manual administrator decision.");
+    setText("reviewMessage", "Processing may take up to six hours. This countdown is an estimate and does not approve your account.");
+    const expired = $("reviewExpired");
+    if (expired) expired.classList.add("hidden");
+    startReviewCountdown(started);
+  }
+
+  function ensureActivationView() {
+    const form = $("activationForm");
+    if (!form) return;
+    if (currentProfile) {
+      const fullName = form.querySelector('[name="full_name"]');
+      const phone = form.querySelector('[name="phone"]');
+      if (fullName && !fullName.value) fullName.value = currentProfile.full_name || "";
+      if (phone && !phone.value) phone.value = currentProfile.phone || "";
+    }
+    const select = $("membershipLevel");
+    if (select && currentActivationRequest?.membership_level) {
+      select.value = String(currentActivationRequest.membership_level);
+    }
+  }
+
+  function ensureVerificationView() {
+    const form = $("verificationForm");
+    if (form) {
+      const input = form.querySelector('[name="position_number"], [name="submitted_code"], [name="fbk_code"]');
+      if (input) input.autocomplete = "off";
+    }
+  }
