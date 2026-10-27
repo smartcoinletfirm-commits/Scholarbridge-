@@ -1112,3 +1112,349 @@ async function saveHallLeaderpost(event) {
         <p id="hallScholarStatus" role="status"></p><div id="hallScholarAdminList"></div>
       </section>
     `;
+bindHallOfFameAdmin();
+    loadHallOfFameAdmin().catch(error => console.warn("Hall of Fame admin loading:", error));
+
+    const status = $("sbAlertStatus");
+    const list = $("sbAlertList");
+    const soundButton = $("sbEnableSound");
+    const browserButton = $("sbEnableBrowserAlerts");
+    const refreshButton = $("sbRefreshAlerts");
+
+    function playAlarm() {
+      if (!notificationSoundEnabled) return;
+      try {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) return;
+        notificationAudio ||= new AudioContextClass();
+        if (notificationAudio.state === "suspended") notificationAudio.resume();
+        const oscillator = notificationAudio.createOscillator();
+        const gain = notificationAudio.createGain();
+        oscillator.type = "sine";
+        oscillator.frequency.value = 880;
+        gain.gain.value = 0.13;
+        oscillator.connect(gain);
+        gain.connect(notificationAudio.destination);
+        oscillator.start();
+        oscillator.stop(notificationAudio.currentTime + 0.4);
+      } catch (error) {
+        console.warn("Alarm sound unavailable:", error);
+      }
+    }
+
+    soundButton.addEventListener("click", async () => {
+      try {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) throw new Error("Audio is not supported.");
+        notificationAudio ||= new AudioContextClass();
+        if (notificationAudio.state === "suspended") await notificationAudio.resume();
+        notificationSoundEnabled = true;
+        soundButton.textContent = "Alarm sound enabled";
+        playAlarm();
+      } catch (error) {
+        status.textContent = "Sound could not start. Check your phone's sound settings and try again.";
+      }
+    });
+
+    browserButton.addEventListener("click", async () => {
+      if (!("Notification" in window)) {
+        status.textContent = "Browser notifications are not supported on this device.";
+        return;
+      }
+      const permission = await Notification.requestPermission();
+      status.textContent = permission === "granted"
+        ? "Browser alerts enabled while this page is running."
+        : "Browser alerts were not enabled. Check your browser's site permissions.";
+    });
+
+    async function refreshAlerts() {
+      if (!currentUser || currentProfile?.role !== "admin" || currentProfile?.account_status !== "approved") {
+        root.classList.add("hidden");
+        return;
+      }
+      refreshButton.disabled = true;
+      try {
+        const { data, error } = await requireDatabase()
+          .from("admin_notifications")
+          .select("id,user_id,event_type,membership_level,phone,message,submitted_fbk_code,is_read,created_at")
+          .order("created_at", { ascending: false })
+          .limit(100);
+        if (error) throw error;
+
+        const notifications = data || [];
+        const newest = notifications[0];
+        if (newest && newestNotificationId && newest.id !== newestNotificationId && newest.event_type === "fbk_submitted") {
+          playAlarm();
+          if ("Notification" in window && Notification.permission === "granted") {
+            try {
+              new Notification("Scholarbrige: FBK submitted", {
+                body: "A member submitted an FBK number. Open the admin panel to review it."
+              });
+            } catch (_) {}
+          }
+        }
+        if (newest) newestNotificationId = newest.id;
+
+        status.textContent = `${notifications.filter(item => !item.is_read).length} unread notification(s).`;
+        list.replaceChildren();
+        if (!notifications.length) {
+          list.textContent = "No notifications yet.";
+          return;
+        }
+
+        notifications.forEach(item => {
+          const card = document.createElement("article");
+          card.className = "task-card";
+          const heading = document.createElement("h3");
+          heading.textContent = item.event_type === "activation_requested"
+            ? "New activation request"
+            : item.event_type === "fbk_page_opened"
+              ? "Member reached FBK page"
+              : "FBK number submitted";
+          const message = document.createElement("p");
+          message.textContent = item.message || "Administrator notification";
+          const details = document.createElement("p");
+          details.textContent = `Phone: ${item.phone || "—"} · Level: ${item.membership_level ?? "—"} · ${item.created_at ? new Date(item.created_at).toLocaleString() : ""}`;
+          card.append(heading, message, details);
+
+          if (item.event_type === "fbk_submitted" && item.submitted_fbk_code) {
+            const code = document.createElement("p");
+            code.textContent = "Submitted FBK number: " + item.submitted_fbk_code;
+            card.appendChild(code);
+          }
+
+          if (!item.is_read) {
+            const readButton = document.createElement("button");
+            readButton.type = "button";
+            readButton.textContent = "Mark as read";
+            readButton.addEventListener("click", async () => {
+              const { error: updateError } = await requireDatabase()
+                .from("admin_notifications")
+                .update({ is_read: true })
+                .eq("id", item.id);
+              if (updateError) {
+                status.textContent = "Could not mark notification as read: " + updateError.message;
+                return;
+              }
+              refreshAlerts();
+            });
+            card.appendChild(readButton);
+          }
+          list.appendChild(card);
+        });
+      } catch (error) {
+        console.error("Admin notification error:", error);
+        status.textContent = "Notifications could not load. Check the admin_notifications table, its columns, and approved-admin RLS policies.";
+      } finally {
+        refreshButton.disabled = false;
+      }
+    }
+
+    refreshButton.addEventListener("click", refreshAlerts);
+
+    // Establish the current newest notification without sounding for old alerts.
+    try {
+      const { data, error } = await requireDatabase()
+        .from("admin_notifications")
+        .select("id")
+        .order("created_at", { ascending: false })
+        .limit(1);
+      if (!error && data?.length) newestNotificationId = data[0].id;
+    } catch (error) {
+      console.warn("Could not initialise notification polling:", error);
+    }
+
+    await refreshAlerts();
+    if (notificationTimer) clearInterval(notificationTimer);
+    notificationTimer = setInterval(refreshAlerts, 8000);
+  }
+
+  async function updateSalePrice() {
+    const level = Number($("sellAccountLevel")?.value || 4);
+    const prices = { 1: 0, 2: 0, 3: 0, 4: 4200, 5: 12880, 6: 18000.8 };
+    setText("sellAccountPrice", "Estimated display price: " + formatMoney(prices[level] || 0) + ". Final requests require manual review.");
+  }
+
+  async function submitAccountSale(event) {
+    event.preventDefault();
+    if (!currentUser || currentProfile?.account_status !== "approved") {
+      return notice("Only approved members can submit an account service request.", "error");
+    }
+    const level = Number($("sellAccountLevel")?.value || 4);
+    const prices = { 4: 4200, 5: 12880, 6: 18000.8 };
+    const price = prices[level];
+    if (!price) return notice("Choose a valid account level.", "error");
+
+    try {
+      const { error } = await requireDatabase().from("account_sale_requests").insert({
+        user_id: currentUser.id,
+        level,
+        price,
+        status: "submitted"
+      });
+      if (error) throw error;
+      notice("Your account service request was submitted for manual review.", "success");
+    } catch (error) {
+      console.error("Account sale request failed:", error);
+      notice("Could not submit request: " + (error.message || "Confirm the account_sale_requests table columns."), "error");
+    }
+  }
+
+  async function copyReferral() {
+    const code = String($("refCode")?.value || $("refCode")?.textContent || currentProfile?.referral_code || "").trim();
+    if (!code || code.includes("Not available")) return notice("Your referral code is not available yet.", "warning");
+    try {
+      await navigator.clipboard.writeText(code);
+      notice("Referral code copied.", "success");
+    } catch (_) {
+      window.prompt("Copy your referral code:", code);
+    }
+  }
+
+  async function shareInvite() {
+    const code = String(currentProfile?.referral_code || $("refCode")?.value || "").trim();
+    if (!code) return notice("Your referral code is not available yet.", "warning");
+    const link = "https://tinyurl.com/yc5svrvs";
+    const text = `Join me on Scholarbrige Academic Hub. Use my referral code ${code}: ${link}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: BRAND_NAME, text, url: link });
+      } else if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        notice("Your referral message was copied. Share it with your friends.", "success");
+      } else {
+        window.prompt("Copy and share this invitation:", text);
+      }
+    } catch (error) {
+      if (error?.name !== "AbortError") window.prompt("Copy and share this invitation:", text);
+    }
+  }
+
+  function applyTheme(theme) {
+    const valid = THEME_ORDER.includes(theme) ? theme : "forest-green";
+    document.documentElement.dataset.theme = valid;
+    document.body.dataset.theme = valid;
+    try { localStorage.setItem("scholarbrige_theme", valid); } catch (_) {}
+  }
+
+  function rotateTheme() {
+    let started = Number(localStorage.getItem(THEME_KEY)) || Date.now();
+    if (Date.now() - started >= THEME_INTERVAL) {
+      const current = document.documentElement.dataset.theme || "forest-green";
+      const index = THEME_ORDER.indexOf(current);
+      applyTheme(THEME_ORDER[(index + 1) % THEME_ORDER.length]);
+      started = Date.now();
+      localStorage.setItem(THEME_KEY, String(started));
+    } else {
+      const saved = localStorage.getItem("scholarbrige_theme");
+      if (saved && THEME_ORDER.includes(saved)) applyTheme(saved);
+      else applyTheme("forest-green");
+    }
+  }
+
+  function updateCountryWelcome() {
+    const select = $("countrySelect");
+    const welcome = $("countryWelcome");
+    if (!select || !welcome) return;
+    const greetings = {
+      Kenya: "🇰🇪 Karibu to Scholarbrige!",
+      Uganda: "🇺🇬 Tukusanyukidde to Scholarbrige!",
+      Tanzania: "🇹🇿 Karibu Scholarbrige!",
+      Ghana: "🇬🇭 Akwaaba to Scholarbrige!",
+      Nigeria: "🇳🇬 Welcome to Scholarbrige!"
+    };
+    if (greetings[select.value]) {
+      welcome.textContent = greetings[select.value];
+      welcome.classList.remove("hidden");
+    } else {
+      welcome.classList.add("hidden");
+      welcome.textContent = "";
+    }
+  }
+
+  function bindEvents() {
+    bind("loginForm", "submit", login);
+    bind("signupForm", "submit", signup);
+    bind("activationForm", "submit", requestActivation);
+    bind("verificationForm", "submit", verifyActivationCode);
+    bind("resetPassword", "click", resetPassword);
+    bind("checkVerification", "click", refreshStatus);
+    bind("checkPending", "click", refreshStatus);
+    ["logoutActivation", "logoutVerification", "logoutPending", "logoutDashboard", "dashLogout"].forEach(id => bind(id, "click", logout));
+    bind("showSupport", "click", () => showView("supportView"));
+    bind("supportButton", "click", contactSupport);
+    bind("closeSupport", "click", () => showView("dashboardView"));
+    bind("copyReferral", "click", copyReferral);
+    bind("shareInvite", "click", shareInvite);
+    bind("refreshTasks", "click", loadTasks);
+    bind("refreshActivationQueue", "click", loadAdminActivationQueue);
+    bind("refreshSaleQueue", "click", loadAdminSaleQueue);
+    bind("enableActivationAlerts", "click", async () => {
+      if (!("Notification" in window)) return notice("Browser notifications are not supported here.", "warning");
+      const permission = await Notification.requestPermission();
+      notice(permission === "granted" ? "Browser notifications enabled while the admin page is running." : "Notification permission was not granted.", permission === "granted" ? "success" : "warning");
+    });
+    bind("sellAccountForm", "submit", submitAccountSale);
+    bind("sellAccountLevel", "change", updateSalePrice);
+    bind("countrySelect", "change", updateCountryWelcome);
+
+    document.querySelectorAll("[data-tab]").forEach(button => {
+      if (button.dataset.appTabBound === "true") return;
+      button.addEventListener("click", () => activateTab(button.dataset.tab));
+      button.dataset.appTabBound = "true";
+    });
+  }
+
+  async function startApp() {
+    bindEvents();
+    rotateTheme();
+    setInterval(rotateTheme, 60 * 1000);
+    updateCountryWelcome();
+    updateSalePrice();
+    loadPublicHallOfFame();
+
+    if (!db) {
+      showView("authView");
+      showError("The sign-in service did not load. Check your internet connection and reload the page.");
+      return;
+    }
+
+    try {
+      const { data, error } = await db.auth.getSession();
+      if (error) throw error;
+      currentUser = data?.session?.user || null;
+      if (currentUser) {
+        await routeUser(currentUser);
+      } else {
+        showView("authView");
+      }
+    } catch (error) {
+      console.error("Startup error:", error);
+      showView("authView");
+      showError("Scholarbrige could not start: " + (error.message || "Refresh and try again."));
+    }
+
+    if (!authListenerRegistered) {
+      authListenerRegistered = true;
+      db.auth.onAuthStateChange((event, session) => {
+        currentUser = session?.user || null;
+        if (event === "SIGNED_OUT") {
+          currentProfile = null;
+          showView("authView");
+          return;
+        }
+        if (currentUser && ["SIGNED_IN", "TOKEN_REFRESHED", "USER_UPDATED"].includes(event)) {
+          // Defer to avoid running database calls inside the auth event callback.
+          setTimeout(() => routeUser(currentUser), 0);
+        }
+      });
+    }
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", startApp, { once: true });
+  } else {
+    startApp();
+  }
+})();
+                   
