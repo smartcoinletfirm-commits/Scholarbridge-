@@ -223,18 +223,103 @@
   }
 
   function startPendingView() {
-    const key = REVIEW_KEY_PREFIX + (currentUser?.id || "unknown");
-    let started = Number(localStorage.getItem(key));
-    if (!started || !Number.isFinite(started)) {
-      started = Date.now();
-      localStorage.setItem(key, String(started));
-    }
-    showView("pendingView");
-    setText("pendingLabel", "Your FBK submission is waiting for a manual administrator decision.");
-    setText("reviewMessage", "Processing may take up to six hours. This countdown is an estimate and does not approve your account.");
-    const expired = $("reviewExpired");
-    if (expired) expired.classList.add("hidden");
-    startReviewCountdown(started);
+  const key = REVIEW_KEY_PREFIX + (currentUser?.id || "unknown");
+  let started = Number(localStorage.getItem(key));
+
+  if (!started || !Number.isFinite(started)) {
+    started = Date.now();
+    localStorage.setItem(key, String(started));
+  }
+
+  showView("pendingView");
+
+  setText(
+    "pendingLabel",
+    "Your FBK submission is waiting for a manual administrator decision."
+  );
+
+  setText(
+    "reviewMessage",
+    "Processing may take up to six hours. This countdown is an estimate and does not approve your account."
+  );
+
+  const expired = $("reviewExpired");
+  if (expired) expired.classList.add("hidden");
+
+  // Add the invalid-code alert and request button.
+  let requestBox = $("fbkInvalidRequestBox");
+
+  if (!requestBox) {
+    requestBox = document.createElement("div");
+    requestBox.id = "fbkInvalidRequestBox";
+    requestBox.style.cssText =
+      "margin:20px 0;padding:18px;border:1px solid #e6a23c;" +
+      "border-radius:14px;background:rgba(230,162,60,.10);";
+
+    requestBox.innerHTML = `
+      <p style="font-weight:700;margin:0 0 8px;">
+        FBK code invalid?
+      </p>
+      <p style="margin:0 0 14px;">
+        If your code was rejected or is incorrect, request a new submission
+        opportunity and enter your corrected FBK code.
+      </p>
+      <button type="button" id="requestNewFbkCode"
+        style="padding:12px 18px;border:0;border-radius:9px;
+        cursor:pointer;font-weight:700;">
+        Request New Code
+      </button>
+      <p id="fbkRequestNotice" style="margin:10px 0 0;"></p>
+    `;
+
+    const pendingView = $("pendingView");
+    if (pendingView) pendingView.appendChild(requestBox);
+
+    const requestButton = requestBox.querySelector("#requestNewFbkCode");
+
+    requestButton.addEventListener("click", async () => {
+      const noticeEl = $("fbkRequestNotice");
+
+      try {
+        requestButton.disabled = true;
+
+        const latest = await latestFbkSubmission(currentUser?.id);
+
+        if (latest && ["submitted", "reviewed"].includes(latest.status)) {
+          if (noticeEl) {
+            noticeEl.textContent =
+              "Your code is still under review. Wait for the administrator's decision.";
+          }
+          return;
+        }
+
+        ensureVerificationView();
+        showView("verificationView");
+
+        setText(
+          "verificationStatus",
+          "Enter your corrected FBK code and submit it for manual review."
+        );
+
+        const form = $("verificationForm");
+        if (form) {
+          form.classList.remove("hidden");
+          form.reset?.();
+        }
+      } catch (error) {
+        console.error("FBK new-code request failed:", error);
+
+        if (noticeEl) {
+          noticeEl.textContent =
+            "Could not open the FBK page. Please refresh and try again.";
+        }
+      } finally {
+        requestButton.disabled = false;
+      }
+    });
+  }
+
+  startReviewCountdown(started);
   }
 
   function ensureActivationView() {
