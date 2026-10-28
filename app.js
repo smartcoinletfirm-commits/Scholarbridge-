@@ -106,7 +106,7 @@
         delete button.dataset.originalText;
       }
     }
- }
+ 
 function showView(id) {
     const views = ["authView", "activationView", "verificationView", "pendingView", "dashboardView", "supportView"];
     views.forEach(viewId => {
