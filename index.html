@@ -4,64 +4,21 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#073b2b">
 <meta name="description" content="Scholarbrige Academic Hub — learn, write, research and grow."><title>Scholarbrige Academic Hub</title>
 <link rel="stylesheet" href="style.css"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script defer src="app.js"></script>
+<meta name="color-scheme" content="light">
 </head>
 <body>
 <div class="ambient ambient-one"></div><div class="ambient ambient-two"></div>
 <header class="topbar"><a class="brand" href="#" aria-label="Scholarbrige home"><span class="brand-symbol">S<span>+</span></span><span class="brand-copy"><strong>Scholarbrige</strong><small>ACADEMIC HUB</small></span></a><div class="topbar-right"><span class="secure-label"><i></i> LEARN · WRITE · GROW</span><span class="topbar-mark">SAH</span></div></header>
 <main class="site-wrap">
 <div id="globalMessage" class="notice hidden" role="status" aria-live="polite"></div><div id="authNotice" class="notice hidden" role="status" aria-live="polite"></div>
- <!-- SCHOLARBRIGE PUBLIC HALL OF FAME -->
+
+<!-- SCHOLARBRIGE PUBLIC HALL OF FAME -->
 <section id="publicHallOfFame" class="hall-of-fame">
-  <div class="hall-heading">
-    <span class="section-tag">THE SCHOLARBRIGE COMMUNITY</span>
-    <h2>Great minds. <em>Real milestones.</em></h2>
-    <p>Discover community announcements, celebrate verified achievements and follow our scholars' progress.</p>
-  </div>
-
-  <div class="hall-feature">
-    <div class="hall-feature-icon">✦</div>
-    <div class="hall-feature-copy">
-      <span class="hall-label">FEATURED LEADERPOST</span>
-      <h3 id="leaderpostTitle">A new chapter begins here.</h3>
-      <p id="leaderpostText">This is where Scholarbrige community announcements and inspiring academic milestones will appear.</p>
-      <small id="leaderpostDate">SCHOLARBRIGE COMMUNITY NEWS</small>
-    </div>
-  </div>
-
-  <div class="hall-stats">
-    <article>
-      <span class="hall-stat-icon">🏆</span>
-      <small>FEATURED SCHOLAR</small>
-      <h3 id="hallFeaturedName">Coming soon</h3>
-      <p id="hallFeaturedAchievement">Verified achievement spotlight</p>
-    </article>
-    <article>
-      <span class="hall-stat-icon">✧</span>
-      <small>VERIFIED EARNINGS</small>
-      <h3 id="hallFeaturedEarnings">—</h3>
-      <p>Confirmed results only</p>
-    </article>
-  </div>
-
-  <div class="hall-leaderboard">
-    <div class="hall-leaderboard-heading">
-      <div>
-        <span class="section-tag">COMMUNITY RECOGNITION</span>
-        <h3>Scholar spotlight</h3>
-      </div>
-      <span class="hall-live"><i></i> ACHIEVEMENTS</span>
-    </div>
-    <div id="publicScholarList" class="public-scholar-list">
-      <div class="hall-empty">
-        <span>✦</span>
-        <p>Scholar achievements will appear here when published and verified by the team.</p>
-      </div>
-    </div>
-  </div>
-
-  <p class="hall-disclaimer">
-    Featured achievements and earnings are published only after verification and with the scholar's permission.
-  </p>
+  <div class="hall-heading"><span class="section-tag">THE SCHOLARBRIGE COMMUNITY</span><h2>Great minds. <em>Real milestones.</em></h2><p>Discover community announcements, celebrate verified achievements and follow our scholars' progress.</p></div>
+  <div class="hall-feature"><div class="hall-feature-icon">✦</div><div class="hall-feature-copy"><span class="hall-label">FEATURED LEADERPOST</span><h3 id="leaderpostTitle">A new chapter begins here.</h3><p id="leaderpostText">Community announcements and academic milestones will appear here.</p><small id="leaderpostDate">SCHOLARBRIGE COMMUNITY NEWS</small></div></div>
+  <div class="hall-stats"><article><span class="hall-stat-icon">🏆</span><small>FEATURED SCHOLAR</small><h3 id="hallFeaturedName">Coming soon</h3><p id="hallFeaturedAchievement">Verified achievement spotlight</p></article><article><span class="hall-stat-icon">✧</span><small>VERIFIED EARNINGS</small><h3 id="hallFeaturedEarnings">—</h3><p>Confirmed results only</p></article></div>
+  <div class="hall-leaderboard"><div class="hall-leaderboard-heading"><div><span class="section-tag">COMMUNITY RECOGNITION</span><h3>Scholar spotlight</h3></div><span class="hall-live"><i></i> ACHIEVEMENTS</span></div><div id="publicScholarList" class="public-scholar-list"><div class="hall-empty"><span>✦</span><p>Scholar achievements will appear here when published and verified.</p></div></div></div>
+  <p class="hall-disclaimer">Featured achievements and earnings are published only after verification and with the scholar's permission.</p>
 </section>
 <section id="authView" class="auth-layout">
  <div class="hero-column"><div class="hero-kicker"><span class="kicker-line"></span> YOUR NEXT CHAPTER STARTS HERE</div><h1>Ideas become<br><em>opportunity.</em></h1><p class="hero-copy">A learning community for ambitious minds. Build academic skills, find meaningful opportunities and grow beyond borders.</p>
@@ -80,23 +37,27 @@
 <section id="dashboardView" class="dashboard hidden"><div class="dash-top"><div><span class="section-tag">YOUR MEMBER WORKSPACE</span><h1>Good to see you, <span id="memberName">Member</span>.</h1><p id="dashStatus">Your Scholarbrige space is ready.</p></div><button id="logoutDashboard" class="secondary" type="button">Log out ↗</button></div><div class="dashboard-banner"><div><span class="banner-kicker">SCHOLARBRIGE / MEMBER OVERVIEW</span><h2>Your progress.<br><em>Your next opportunity.</em></h2><p>Keep learning, connect with your circle and make your next move.</p></div><div class="banner-seal"><span>SAH</span><small>LEARN · GROW</small></div></div>
 <div class="metric-grid"><article class="metric wallet-metric"><div class="metric-head"><span>AVAILABLE WALLET</span><span class="metric-symbol">◈</span></div><strong id="walletHeadline">KES 0</strong><small>Available balance · database confirmed</small><div class="metric-bottom"><span>Reserved</span><b id="reservedBalance">KES 0</b></div><div class="metric-bottom"><span>Total withdrawn</span><b id="totalWithdrawn">KES 0</b></div></article><article class="metric"><div class="metric-head"><span>YOUR CIRCLE</span><span class="metric-symbol">◎</span></div><strong id="refCount">0</strong><small>People connected to your referral code</small><div class="metric-footnote">Growth begins with one connection.</div></article><article class="metric"><div class="metric-head"><span>MEMBER STATUS</span><span class="metric-symbol">✦</span></div><strong class="status-word">Active</strong><small>Account status</small><div class="metric-footnote">Keep your profile and details up to date.</div></article></div>
 <div class="dash-columns"><article class="content-card"><div class="card-heading"><div><span class="section-tag">COMMUNITY</span><h2>Your Scholarbrige Circle</h2></div><span class="card-icon">✳</span></div><p>Celebrate real milestones with people connected to your referral journey.</p><div id="circleFeed" class="feed-empty">Your circle updates will appear here when verified milestones are available.</div></article><article class="content-card"><div class="card-heading"><div><span class="section-tag">SHORTCUTS</span><h2>Make a move</h2></div><span class="card-icon">↗</span></div><div class="quick-actions"><button class="action" id="shareInvite" type="button"><span class="action-icon">↗</span><span><b>Invite a friend</b><small>Share your personal referral link</small></span><i>→</i></button><button class="action" id="showSupport" type="button"><span class="action-icon">✉</span><span><b>Contact support</b><small>Get help with your account</small></span><i>→</i></button></div><label class="ref-label">YOUR REFERRAL CODE<input id="refCode" type="text" readonly value=""></label><button id="copyReferral" class="secondary full" type="button">Copy referral code</button></article></div>
-<div id="taskCentre" class="content-card task-centre"><div class="card-heading"><div><span class="section-tag">OPPORTUNITIES</span><h2>Tasks & learning</h2></div><button id="refreshTasks" class="secondary" type="button">Refresh tasks</button></div><p id="taskNotice" class="small-note"></p><div id="taskList"></div></div>
-<section id="scholarbrigeAdminPanel" class="content-card hidden">
-  <div class="card-heading">
-    <div>
-      <span class="section-tag">ADMINISTRATION</span>
-      <h2>Scholarbrige Admin Management</h2>
-    </div>
+
+<section id="scholarTools" class="content-card">
+  <div class="card-heading"><div><span class="section-tag">YOUR SCHOLAR PROFILE</span><h2>Profile & account tools</h2></div><span class="card-icon">✦</span></div>
+  <div class="profile-tools">
+    <div class="profile-avatar-wrap"><img id="memberAvatar" class="member-avatar" alt="Your profile photo" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Crect width='120' height='120' rx='60' fill='%23e9f7d1'/%3E%3Ctext x='60' y='73' font-size='48' text-anchor='middle' fill='%23073b2b'%3ES%3C/text%3E%3C/svg%3E"><label class="secondary upload-label" for="avatarUpload">Upload photo</label><input id="avatarUpload" type="file" accept="image/png,image/jpeg,image/webp" hidden><small class="small-note">JPG, PNG or WebP · max 3 MB</small></div>
+    <div class="profile-meta"><b id="profileDisplayName">Scholar</b><span id="profileMemberLevel">Current membership level: checking…</span><small>Use a clear profile photo so other registered members can recognise you.</small></div>
   </div>
-  <p>Manage members, review FBK submissions and inspect payment records.</p>
 </section>
- <section id="adminActivationPanel" class="content-card hidden"><div class="card-heading"><div><span class="section-tag">ADMINISTRATOR</span><h2>FBK submission review</h2></div><button id="refreshActivationQueue" class="secondary" type="button">Refresh queue</button></div><p id="adminQueueStatus">Review submitted codes and make one manual decision.</p><div id="adminActivationQueue"></div><button id="enableActivationAlerts" class="secondary" type="button">Enable review alerts</button></section>
+<div class="dash-columns">
+  <section class="content-card" id="withdrawPanel"><div class="card-heading"><div><span class="section-tag">WALLET SERVICES</span><h2>Request a withdrawal</h2></div><span class="card-icon">↗</span></div><p>Minimum withdrawal: <b>KES 2,000</b>. Requests are reviewed manually; this form does not send money automatically.</p><form id="withdrawForm" class="form"><label>Amount (KES)<input id="withdrawAmount" name="amount" type="number" min="2000" step="1" required placeholder="2000"></label><label>M-Pesa phone number<input id="withdrawPhone" name="phone" type="tel" required placeholder="07… or +254…"></label><button class="primary full" type="submit">Submit withdrawal request <span>↗</span></button></form><p id="withdrawNotice" class="small-note" role="status"></p><div id="withdrawHistory" class="history-list"></div></section>
+  <section class="content-card" id="upgradePanel"><div class="card-heading"><div><span class="section-tag">MEMBERSHIP PATHWAY</span><h2>Upgrade account</h2></div><span class="card-icon">✧</span></div><p>Choose the next level. Your request continues through the existing FBK submission page and remains subject to manual admin review.</p><div class="upgrade-current" id="upgradeCurrentLevel">Current level: checking…</div><form id="upgradeForm" class="form"><label>Next membership level<select id="upgradeNextLevel" name="next_level" required><option value="2">Level 1 → 2 · KES 700</option><option value="3">Level 2 → 3 · KES 1,400</option><option value="4">Level 3 → 4 · KES 2,000</option><option value="5">Level 4 → 5 · KES 2,780</option><option value="6">Level 5 → 6 · KES 3,500</option><option value="7">Level 6 → 7 · KES 4,200</option></select></label><p id="upgradeFeeText" class="small-note">Upgrade fee: KES 700</p><button class="primary full" type="submit">Continue to FBK submission <span>↗</span></button></form><p id="upgradeNotice" class="small-note" role="status"></p></section>
+</div>
+<div class="dash-columns">
+  <section class="content-card" id="memberSearchPanel"><div class="card-heading"><div><span class="section-tag">SCHOLAR NETWORK</span><h2>Find registered members</h2></div><span class="card-icon">⌕</span></div><label class="ref-label">Search by member name or username<input id="memberSearchInput" type="search" placeholder="Search members…" autocomplete="off"></label><div id="memberSearchResults" class="member-search-results"><p class="feed-empty">Search to find approved members and start a private conversation.</p></div></section>
+  <section class="content-card" id="privateChatPanel"><div class="card-heading"><div><span class="section-tag">PRIVATE MESSAGES</span><h2 id="chatHeading">Your conversations</h2></div><span class="card-icon">✉</span></div><div id="chatMessages" class="chat-messages"><p class="feed-empty">Select a member from search to view your private chat history.</p></div><form id="chatForm" class="chat-compose hidden"><label class="sr-only" for="chatMessageInput">Message</label><textarea id="chatMessageInput" rows="2" maxlength="2000" required placeholder="Write a private message…"></textarea><button class="primary" type="submit">Send message ↗</button></form><p id="chatNotice" class="small-note" role="status"></p></section>
+</div>
+
+<div id="taskCentre" class="content-card task-centre"><div class="card-heading"><div><span class="section-tag">OPPORTUNITIES</span><h2>Tasks & learning</h2></div><button id="refreshTasks" class="secondary" type="button">Refresh tasks</button></div><p id="taskNotice" class="small-note"></p><div id="taskList"></div></div>
+<section id="scholarbrigeAdminPanel" class="content-card hidden"><div class="card-heading"><div><span class="section-tag">ADMINISTRATION</span><h2>Scholarbrige Admin Management</h2></div></div><p>Review member activity and administrator notifications.</p></section>
+<section id="adminActivationPanel" class="content-card hidden"><div class="card-heading"><div><span class="section-tag">ADMINISTRATOR</span><h2>FBK submission review</h2></div><button id="refreshActivationQueue" class="secondary" type="button">Refresh queue</button></div><p id="adminQueueStatus">Review submitted codes and make one manual decision.</p><div id="adminActivationQueue"></div><button id="enableActivationAlerts" class="secondary" type="button">Enable review alerts</button></section>
 <section id="adminSalePanel" class="content-card hidden"><div class="card-heading"><div><span class="section-tag">ADMINISTRATOR</span><h2>Account sale requests</h2></div><button id="refreshSaleQueue" class="secondary" type="button">Refresh queue</button></div><div id="adminSaleQueue"></div></section>
 <section id="adminTaskReview" class="content-card hidden"><div class="card-heading"><div><span class="section-tag">ADMINISTRATOR</span><h2>Task submissions</h2></div></div><div id="adminTaskList"></div></section>
 <section id="sellAccountPanel" class="content-card hidden"><div class="card-heading"><div><span class="section-tag">ACCOUNT SERVICES</span><h2>Account services</h2></div></div><form id="sellAccountForm" class="form"><label>Account level<select id="sellAccountLevel" name="level"><option value="4">Level 4</option><option value="5">Level 5</option><option value="6">Level 6</option></select></label><p id="sellAccountPrice" class="small-note"></p><button class="primary" type="submit">Submit account request</button></form></section>
-<div class="content-card"><div class="card-heading"><div><span class="section-tag">ACCOUNT SUPPORT</span><h2>Need a hand?</h2></div></div><p>Contact support if your status or account details need attention.</p><button id="supportButton" class="secondary" type="button">Contact Scholarbrige support</button><button id="dashLogout" class="text-button" type="button">Sign out</button></div>
-</section>
-<section id="supportView" class="state-layout hidden"><div class="state-card"><span class="section-tag">SUPPORT</span><h1>We're here to help.</h1><p>Reach the Scholarbrige support team for account assistance.</p><a class="primary full button-link" href="mailto:smart@gmail.com">Email support</a><button id="closeSupport" class="secondary full" type="button">Back to dashboard</button></div></section>
-<footer class="site-footer"><a class="footer-brand" href="#">S<span>+</span> Scholarbrige</a><span>Connecting minds. Building futures.</span><span>© Scholarbrige Academic Hub</span></footer>
-</main>
-</body></html>
+<div class="content-card"><div class="card-heading"><div><span class="section-tag">ACCOUNT SUPPORT</span><h2>Need a hand?</h2></div></div><p>Contact support if your status or account details need attention.</p><b
