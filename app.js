@@ -1267,3 +1267,162 @@ bindHallOfFameAdmin();
     } catch (error) {
       console.error("Account sale request failed:", error);
       notice("Could not submit request: " + (error.message || "Confirm the account_sale_requests table columns."), "error"
+async function copyReferral() {
+    const code = String($("refCode")?.value || $("refCode")?.textContent || currentProfile?.referral_code || "").trim();
+    if (!code || code.includes("Not available")) return notice("Your referral code is not available yet.", "warning");
+    try {
+      await navigator.clipboard.writeText(code);
+      notice("Referral code copied.", "success");
+    } catch (_) {
+      window.prompt("Copy your referral code:", code);
+    }
+  }
+
+  async function shareInvite() {
+    const code = String(currentProfile?.referral_code || $("refCode")?.value || "").trim();
+    if (!code) return notice("Your referral code is not available yet.", "warning");
+    const link = "https://tinyurl.com/yc5svrvs";
+    const text = `Join me on Scholarbrige Academic Hub. Use my referral code ${code}: ${link}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: BRAND_NAME, text, url: link });
+      } else if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        notice("Your referral message was copied. Share it with your friends.", "success");
+      } else {
+        window.prompt("Copy and share this invitation:", text);
+      }
+    } catch (error) {
+      if (error?.name !== "AbortError") window.prompt("Copy and share this invitation:", text);
+    }
+  }
+
+  function applyTheme(theme) {
+    const valid = THEME_ORDER.includes(theme) ? theme : "forest-green";
+    document.documentElement.dataset.theme = valid;
+    document.body.dataset.theme = valid;
+    try { localStorage.setItem("scholarbrige_theme", valid); } catch (_) {}
+  }
+
+  function rotateTheme() {
+    let started = Number(localStorage.getItem(THEME_KEY)) || Date.now();
+    if (Date.now() - started >= THEME_INTERVAL) {
+      const current = document.documentElement.dataset.theme || "forest-green";
+      const index = THEME_ORDER.indexOf(current);
+      applyTheme(THEME_ORDER[(index + 1) % THEME_ORDER.length]);
+      started = Date.now();
+      localStorage.setItem(THEME_KEY, String(started));
+    } else {
+      const saved = localStorage.getItem("scholarbrige_theme");
+      if (saved && THEME_ORDER.includes(saved)) applyTheme(saved);
+      else applyTheme("forest-green");
+    }
+  }
+
+  function updateCountryWelcome() {
+    const select = $("countrySelect");
+    const welcome = $("countryWelcome");
+    if (!select || !welcome) return;
+    const greetings = {
+      Kenya: "🇰🇪 Karibu to Scholarbrige!",
+      Uganda: "🇺🇬 Tukusanyukidde to Scholarbrige!",
+      Tanzania: "🇹🇿 Karibu Scholarbrige!",
+      Ghana: "🇬🇭 Akwaaba to Scholarbrige!",
+      Nigeria: "🇳🇬 Welcome to Scholarbrige!"
+    };
+    if (greetings[select.value]) {
+      welcome.textContent = greetings[select.value];
+      welcome.classList.remove("hidden");
+    } else {
+      welcome.classList.add("hidden");
+      welcome.textContent = "";
+    }
+  }
+
+  function bindEvents() {
+    bind("loginForm", "submit", login);
+    bind("signupForm", "submit", signup);
+    bind("activationForm", "submit", requestActivation);
+    bind("verificationForm", "submit", verifyActivationCode);
+    bind("resetPassword", "click", resetPassword);
+    bind("checkVerification", "click", refreshStatus);
+    bind("checkPending", "click", refreshStatus);
+    ["logoutActivation", "logoutVerification", "logoutPending", "logoutDashboard", "dashLogout"].forEach(id => bind(id, "click", logout));
+    bind("showSupport", "click", () => showView("supportView"));
+    bind("supportButton", "click", contactSupport);
+    bind("closeSupport", "click", () => showView("dashboardView"));
+    bind("copyReferral", "click", copyReferral);
+    bind("shareInvite", "click", shareInvite);
+    bind("refreshTasks", "click", loadTasks);
+    bind("refreshActivationQueue", "click", loadAdminActivationQueue);
+    bind("refreshSaleQueue", "click", loadAdminSaleQueue);
+    bind("enableActivationAlerts", "click", async () => {
+      if (!("Notification" in window)) return notice("Browser notifications are not supported here.", "warning");
+      const permission = await Notification.requestPermission();
+      notice(permission === "granted" ? "Browser notifications enabled while the admin page is running." : "Notification permission was not granted.", permission === "granted" ? "success" : "warning");
+    });
+    bind("sellAccountForm", "submit", submitAccountSale);
+    bind("sellAccountLevel", "change", updateSalePrice);
+    bind("countrySelect", "change", updateCountryWelcome);
+
+    document.querySelectorAll("[data-tab]").forEach(button => {
+      if (button.dataset.appTabBound === "true") return;
+      button.addEventListener("click", () => activateTab(button.dataset.tab));
+      button.dataset.appTabBound = "true";
+    });
+  }
+
+  async function startApp() {
+    bindEvents();
+    rotateTheme();
+    setInterval(rotateTheme, 60 * 1000);
+    updateCountryWelcome();
+    updateSalePrice();
+    loadPublicHallOfFame();
+
+    if (!db) {
+      showView("authView");
+      showError("The sign-in service did not load. Check your internet connection and reload the page.");
+      return;
+    }
+
+    try {
+      const { data, error } = await db.auth.getSession();
+      if (error) throw error;
+      currentUser = data?.session?.user || null;
+      if (currentUser) {
+        await routeUser(currentUser);
+      } else {
+        showView("authView");
+      }
+    } catch (error) {
+      console.error("Startup error:", error);
+      showView("authView");
+      showError("Scholarbrige could not start: " + (error.message || "Refresh and try again."));
+    }
+
+    if (!authListenerRegistered) {
+      authListenerRegistered = true;
+      db.auth.onAuthStateChange((event, session) => {
+        currentUser = session?.user || null;
+        if (event === "SIGNED_OUT") {
+          currentProfile = null;
+          showView("authView");
+          return;
+        }
+        if (currentUser && ["SIGNED_IN", "TOKEN_REFRESHED", "USER_UPDATED"].includes(event)) {
+          // Defer to avoid running database calls inside the auth event callback.
+          setTimeout(() => routeUser(currentUser), 0);
+        }
+      });
+    }
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", startApp, { once: true });
+  } else {
+    startApp();
+  }
+})();
+
+       
