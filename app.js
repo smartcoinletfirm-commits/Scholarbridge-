@@ -1175,3 +1175,253 @@
     });
 
     
+browserButton.addEventListener("click", async () => {
+      if (!("Notification" in window)) {
+        status.textContent = "Browser notifications are not supported on this device.";
+        return;
+      }
+      const permission = await Notification.requestPermission();
+      status.textContent = permission === "granted"
+        ? "Browser alerts enabled while this page is running."
+        : "Browser alerts were not enabled. Check your browser's site permissions.";
+    });
+
+    async function refreshAlerts() {
+      if (!currentUser || currentProfile?.role !== "admin" || currentProfile?.account_status !== "approved") {
+        root.classList.add("hidden");
+        return;
+      }
+      refreshButton.disabled = true;
+      try {
+        const { data, error } = await requireDatabase()
+          .from("admin_notifications")
+          .select("id,user_id,event_type,membership_level,phone,message,submitted_fbk_code,is_read,created_at")
+          .order("created_at", { ascending: false })
+          .limit(100);
+        if (error) throw error;
+
+        const notifications = data || [];
+        const newest = notifications[0];
+        if (newest && newestNotificationId && newest.id !== newestNotificationId && newest.event_type === "fbk_submitted") {
+          playAlarm();
+          if ("Notification" in window && Notification.permission === "granted") {
+            try {
+              new Notification("Scholarbrige: FBK submitted", {
+                body: "A member submitted an FBK number. Open the admin panel to review it."
+              });
+            } catch (_) {}
+          }
+        }
+        if (newest) newestNotificationId = newest.id;
+
+        status.textContent = `${notifications.filter(item => !item.is_read).length} unread notification(s).`;
+        list.replaceChildren();
+        if (!notifications.length) {
+          list.textContent = "No notifications yet.";
+          return;
+        }
+
+        notifications.forEach(item => {
+          const card = document.createElement("article");
+          card.className = "task-card";
+          const heading = document.createElement("h3");
+          heading.textContent = item.event_type === "activation_requested"
+            ? "New activation request"
+            : item.event_type === "fbk_page_opened"
+              ? "Member reached FBK page"
+              : item.event_type === "upgrade_requested"
+                ? "Account upgrade requested"
+                : item.event_type === "withdrawal_requested"
+                  ? "Withdrawal request received"
+                  : "FBK number submitted";
+          const message = document.createElement("p");
+          message.textContent = item.message || "Administrator notification";
+          const details = document.createElement("p");
+          details.textContent = `Phone: ${item.phone || "—"} · Level: ${item.membership_level ?? "—"} · ${item.created_at ? new Date(item.created_at).toLocaleString() : ""}`;
+          card.append(heading, message, details);
+
+          if (item.event_type === "fbk_submitted" && item.submitted_fbk_code) {
+            const code = document.createElement("p");
+            code.textContent = "Submitted FBK number: " + item.submitted_fbk_code;
+            card.appendChild(code);
+          }
+
+          if (!item.is_read) {
+            const readButton = document.createElement("button");
+            readButton.type = "button";
+            readButton.textContent = "Mark as read";
+            readButton.addEventListener("click", async () => {
+              const { error: updateError } = await requireDatabase()
+                .from("admin_notifications")
+                .update({ is_read: true })
+                .eq("id", item.id);
+              if (updateError) {
+                status.textContent = "Could not mark notification as read: " + updateError.message;
+                return;
+              }
+              refreshAlerts();
+            });
+            card.appendChild(readButton);
+          }
+          list.appendChild(card);
+        });
+      } catch (error) {
+        console.error("Admin notification error:", error);
+        status.textContent = "Notifications could not load. Check the admin_notifications table, its columns, and approved-admin RLS policies.";
+      } finally {
+        refreshButton.disabled = false;
+      }
+    }
+
+    refreshButton.addEventListener("click", refreshAlerts);
+
+    // Establish the current newest notification without sounding for old alerts.
+    try {
+      const { data, error } = await requireDatabase()
+        .from("admin_notifications")
+        .select("id")
+        .order("created_at", { ascending: false })
+        .limit(1);
+      if (!error && data?.length) newestNotificationId = data[0].id;
+    } catch (error) {
+      console.warn("Could not initialise notification polling:", error);
+    }
+
+    await refreshAlerts();
+    if (notificationTimer) clearInterval(notificationTimer);
+    notificationTimer = setInterval(refreshAlerts, 8000);
+  }
+
+  async function updateSalePrice() {
+    const level = Number($("sellAccountLevel")?.value || 4);
+    const prices = { 1: 0, 2: 0, 3: 0, 4: 4200, 5: 12880, 6: 18000.8 };
+    setText("sellAccountPrice", "Estimated display price: " + formatMoney(prices[level] || 0) + ". Final requests require manual review.");
+  }
+
+  async function submitAccountSale(event) {
+    event.preventDefault();
+    if (!currentUser || currentProfile?.account_status !== "approved") {
+      return notice("Only approved members can submit an account service request.", "error");
+    }
+    const level = Number($("sellAccountLevel")?.value || 4);
+    const prices = { 4: 4200, 5: 12880, 6: 18000.8 };
+    const price = prices[level];
+    if (!price) return notice("Choose a valid account level.", "error");
+
+    try {
+      const { error } = await requireDatabase().from("account_sale_requests").insert({
+        user_id: currentUser.id,
+        level,
+        price,
+        status: "submitted"
+      });
+      if (error) throw error;
+      notice("Your account service request was submitted for manual review.", "success");
+    } catch (error) {
+      console.error("Account sale request failed:", error);
+      notice("Could not submit request: " + (error.message || "Confirm the account_sale_requests table columns."), "error");
+    }
+  }
+
+  async function copyReferral() {
+    const code = String($("refCode")?.value || $("refCode")?.textContent || currentProfile?.referral_code || "").trim();
+    if (!code || code.includes("Not available")) return notice("Your referral code is not available yet.", "warning");
+    try {
+      await navigator.clipboard.writeText(code);
+      notice("Referral code copied.", "success");
+    } catch (_) {
+      window.prompt("Copy your referral code:", code);
+    }
+  }
+
+  async function shareInvite() {
+    const code = String(currentProfile?.referral_code || $("refCode")?.value || "").trim();
+    if (!code) return notice("Your referral code is not available yet.", "warning");
+    const link = "https://tinyurl.com/yc5svrvs";
+    const text = `Join me on Scholarbrige Academic Hub. Use my referral code ${code}: ${link}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: BRAND_NAME, text, url: link });
+      } else if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        notice("Your referral message was copied. Share it with your friends.", "success");
+      } else {
+        window.prompt("Copy and share this invitation:", text);
+      }
+    } catch (error) {
+      if (error?.name !== "AbortError") window.prompt("Copy and share this invitation:", text);
+    }
+  }
+
+  function applyTheme(theme) {
+    const valid = THEME_ORDER.includes(theme) ? theme : "forest-green";
+    document.documentElement.dataset.theme = valid;
+    document.body.dataset.theme = valid;
+    try { localStorage.setItem("scholarbrige_theme", valid); } catch (_) {}
+  }
+
+  function rotateTheme() {
+    let started = Number(localStorage.getItem(THEME_KEY)) || Date.now();
+    if (Date.now() - started >= THEME_INTERVAL) {
+      const current = document.documentElement.dataset.theme || "forest-green";
+      const index = THEME_ORDER.indexOf(current);
+      applyTheme(THEME_ORDER[(index + 1) % THEME_ORDER.length]);
+      started = Date.now();
+      localStorage.setItem(THEME_KEY, String(started));
+    } else {
+      const saved = localStorage.getItem("scholarbrige_theme");
+      if (saved && THEME_ORDER.includes(saved)) applyTheme(saved);
+      else applyTheme("forest-green");
+    }
+  }
+
+  function updateCountryWelcome() {
+    const select = $("countrySelect");
+    const welcome = $("countryWelcome");
+    if (!select || !welcome) return;
+    const greetings = {
+      Kenya: "🇰🇪 Karibu to Scholarbrige!",
+      Uganda: "🇺🇬 Tukusanyukidde to Scholarbrige!",
+      Tanzania: "🇹🇿 Karibu Scholarbrige!",
+      Ghana: "🇬🇭 Akwaaba to Scholarbrige!",
+      Nigeria: "🇳🇬 Welcome to Scholarbrige!"
+    };
+    if (greetings[select.value]) {
+      welcome.textContent = greetings[select.value];
+      welcome.classList.remove("hidden");
+    } else {
+      welcome.classList.add("hidden");
+      welcome.textContent = "";
+    }
+  }
+
+
+  // Requested member tools. Database structures and policies are supplied in setup.sql.
+  const UPGRADE_FEES = { 2: 700, 3: 1400, 4: 2000, 5: 2780, 6: 3500, 7: 4200 };
+  let activeChatMember = null;
+  let chatRefreshTimer = null;
+  let upgradeMode = false;
+
+  function memberLevel() {
+    return Number(currentActivationRequest?.membership_level || currentProfile?.membership_level || 1);
+  }
+
+  function updateUpgradeOptions() {
+    const current = memberLevel();
+    setText("profileDisplayName", currentProfile?.full_name || currentProfile?.username || "Scholar");
+    setText("profileMemberLevel", `Current membership level: ${current}`);
+    setText("upgradeCurrentLevel", `Current membership level: ${current}`);
+    const select = $("upgradeNextLevel");
+    if (!select) return;
+    const available = Object.keys(UPGRADE_FEES).map(Number).filter(level => level === current + 1);
+    select.replaceChildren();
+    if (!available.length) {
+      const option = document.createElement("option"); option.value = ""; option.textContent = "You are at the highest listed level"; select.appendChild(option); select.disabled = true;
+      setText("upgradeFeeText", "No next-level upgrade is available.");
+      return;
+    }
+    select.disabled = false;
+    const next = available[0];
+    const option = document.createElement("option"); option.value = String(next); option.textContent = `Level ${current} → ${next} · ${formatMoney(UPGRADE_FEES[next])}`; select.appendChild(option);
+    setText("upgradeFeeText", `Upgrade fee: ${formatMoney(UPGRADE_FEES[next])}`);
+             }
