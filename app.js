@@ -1081,3 +1081,394 @@ async function submitTask(event, taskId, textarea, button) {
       setText("hallPostStatus","Could not load entries: "+(error.message||"Check table permissions."));
       setText("hallScholarStatus","Could not load entries. Check that the Hall of Fame SQL ran successfully and the current user is an approved admin.");
            }
+async function saveHallLeaderpost(event) {
+    event.preventDefault();
+    if (!currentUser || currentProfile?.role !== "admin" || currentProfile?.account_status !== "approved") return notice("Only an approved administrator can edit the Hall of Fame.","error");
+    const id=$("hallPostId").value;
+    const payload={title:$("hallPostTitle").value.trim(), message:$("hallPostMessage").value.trim(), is_published:$("hallPostPublished").checked, updated_at:new Date().toISOString()};
+    if (!payload.title || !payload.message) return setText("hallPostStatus","Enter both a title and a message.");
+    try { const q=id ? requireDatabase().from("scholarbrige_leaderposts").update(payload).eq("id",id) : requireDatabase().from("scholarbrige_leaderposts").insert(payload); const {error}=await q; if(error)throw error; $("hallLeaderpostForm").reset(); $("hallPostId").value=""; setText("hallPostStatus","Announcement saved."); await loadHallOfFameAdmin(); await loadPublicHallOfFame(); }
+    catch(error){setText("hallPostStatus","Could not save announcement: "+(error.message||"Please try again."));}
+  }
+
+  async function saveHallScholar(event) {
+    event.preventDefault();
+    if (!currentUser || currentProfile?.role !== "admin" || currentProfile?.account_status !== "approved") return notice("Only an approved administrator can edit the Hall of Fame.","error");
+    const id=$("hallScholarId").value;
+    const featured=$("hallScholarFeatured").checked;
+    const payload={display_name:$("hallScholarName").value.trim(), achievement:$("hallScholarAchievement").value.trim(), verified_earnings:Number($("hallScholarEarnings").value), currency:"KES", is_featured:featured, is_published:$("hallScholarPublished").checked, consent_confirmed:$("hallScholarConsent").checked, updated_at:new Date().toISOString()};
+    if(!payload.display_name||!payload.achievement||!Number.isFinite(payload.verified_earnings)||payload.verified_earnings<0)return setText("hallScholarStatus","Enter a name, achievement, and valid non-negative earnings amount.");
+    if(payload.is_published&&!payload.consent_confirmed)return setText("hallScholarStatus","Confirm the scholar's consent before publishing this entry.");
+    try {
+      if(featured){const {error:clearError}=await requireDatabase().from("scholarbrige_scholar_spotlights").update({is_featured:false,updated_at:new Date().toISOString()}).neq("id",id||"00000000-0000-0000-0000-000000000000");if(clearError)throw clearError;}
+      const q=id ? requireDatabase().from("scholarbrige_scholar_spotlights").update(payload).eq("id",id) : requireDatabase().from("scholarbrige_scholar_spotlights").insert(payload);
+      const {error}=await q;if(error)throw error;
+      $("hallScholarForm").reset(); $("hallScholarId").value=""; $("hallScholarEarnings").value="0"; setText("hallScholarStatus","Scholar entry saved."); await loadHallOfFameAdmin(); await loadPublicHallOfFame();
+    } catch(error){setText("hallScholarStatus","Could not save scholar: "+(error.message||"Please try again."));}
+  }
+
+  async function loadScholarbrigeAdminPanel() {
+    const root = $("scholarbrigeAdminPanel");
+    if (!root) return;
+    const isAdmin = currentUser && currentProfile?.role === "admin" && currentProfile?.account_status === "approved";
+    if (!isAdmin) {
+      root.classList.add("hidden");
+      return;
+    }
+
+    root.classList.remove("hidden");
+    root.innerHTML = `
+      <div class="sb-admin">
+        <h2>Scholarbrige Admin Management</h2>
+        <p>Activation alerts and member submissions.</p>
+        <div class="sb-admin-actions">
+          <button type="button" id="sbEnableSound">Enable alarm sound</button>
+          <button type="button" id="sbEnableBrowserAlerts">Enable browser alerts</button>
+          <button type="button" id="sbRefreshAlerts">Refresh alerts</button>
+        </div>
+        <p id="sbAlertStatus" role="status">Loading administrator notifications…</p>
+        <div id="sbAlertList" aria-live="polite"></div>
+      </div>
+      <section class="sb-admin hall-admin" style="margin-top:24px">
+        <h2>Public Hall of Fame Manager</h2>
+        <p>Only publish achievements and earnings you have checked and have permission to share. Public earnings are not automatically verified by this website.</p>
+        <h3>Leaderpost / announcement</h3>
+        <form id="hallLeaderpostForm" class="form">
+          <input type="hidden" name="id" id="hallPostId">
+          <label for="hallPostTitle">Title</label><input id="hallPostTitle" name="title" required maxlength="160" placeholder="e.g. Scholar achievement of the week">
+          <label for="hallPostMessage">Message</label><textarea id="hallPostMessage" name="message" required rows="3" maxlength="3000" placeholder="Write the announcement for visitors"></textarea>
+          <label><input type="checkbox" id="hallPostPublished" name="published"> Publish this announcement publicly</label>
+          <div class="sb-admin-actions"><button type="submit" class="primary" id="hallPostSave">Save announcement</button><button type="button" id="hallPostReset">Clear form</button></div>
+        </form>
+        <p id="hallPostStatus" role="status"></p><div id="hallPostAdminList"></div>
+        <hr>
+        <h3>Scholar spotlight / earnings</h3>
+        <form id="hallScholarForm" class="form">
+          <input type="hidden" name="id" id="hallScholarId">
+          <label for="hallScholarName">Public display name</label><input id="hallScholarName" name="display_name" required maxlength="100" placeholder="Scholar name or approved public alias">
+          <label for="hallScholarAchievement">Achievement</label><textarea id="hallScholarAchievement" name="achievement" required rows="3" maxlength="2000" placeholder="Describe the achievement"></textarea>
+          <label for="hallScholarEarnings">Verified earnings amount (KES)</label><input id="hallScholarEarnings" name="verified_earnings" type="number" min="0" step="0.01" required value="0">
+          <label><input type="checkbox" id="hallScholarConsent" name="consent"> I confirm the scholar consented to public display</label>
+          <label><input type="checkbox" id="hallScholarFeatured" name="featured"> Feature this scholar at the top</label>
+          <label><input type="checkbox" id="hallScholarPublished" name="published"> Publish this scholar publicly</label>
+          <div class="sb-admin-actions"><button type="submit" class="primary" id="hallScholarSave">Save scholar</button><button type="button" id="hallScholarReset">Clear form</button></div>
+        </form>
+        <p id="hallScholarStatus" role="status"></p><div id="hallScholarAdminList"></div>
+      </section>
+    `;
+
+    bindHallOfFameAdmin();
+    loadHallOfFameAdmin().catch(error => console.warn("Hall of Fame admin loading:", error));
+
+    const status = $("sbAlertStatus");
+    const list = $("sbAlertList");
+    const soundButton = $("sbEnableSound");
+    const browserButton = $("sbEnableBrowserAlerts");
+    const refreshButton = $("sbRefreshAlerts");
+
+    function playAlarm() {
+      if (!notificationSoundEnabled) return;
+      try {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) return;
+        notificationAudio ||= new AudioContextClass();
+        if (notificationAudio.state === "suspended") notificationAudio.resume();
+        const oscillator = notificationAudio.createOscillator();
+        const gain = notificationAudio.createGain();
+        oscillator.type = "sine";
+        oscillator.frequency.value = 880;
+        gain.gain.value = 0.13;
+        oscillator.connect(gain);
+        gain.connect(notificationAudio.destination);
+        oscillator.start();
+        oscillator.stop(notificationAudio.currentTime + 0.4);
+      } catch (error) {
+        console.warn("Alarm sound unavailable:", error);
+      }
+    }
+
+    soundButton.addEventListener("click", async () => {
+      try {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) throw new Error("Audio is not supported.");
+        notificationAudio ||= new AudioContextClass();
+        if (notificationAudio.state === "suspended") await notificationAudio.resume();
+        notificationSoundEnabled = true;
+        soundButton.textContent = "Alarm sound enabled";
+        playAlarm();
+      } catch (error) {
+        status.textContent = "Sound could not start. Check your phone's sound settings and try again.";
+      }
+    });
+
+    browserButton.addEventListener("click", async () => {
+      if (!("Notification" in window)) {
+        status.textContent = "Browser notifications are not supported on this device.";
+        return;
+      }
+      const permission = await Notification.requestPermission();
+      status.textContent = permission === "granted"
+        ? "Browser alerts enabled while this page is running."
+        : "Browser alerts were not enabled. Check your browser's site permissions.";
+    });
+
+    async function refreshAlerts() {
+      if (!currentUser || currentProfile?.role !== "admin" || currentProfile?.account_status !== "approved") {
+        root.classList.add("hidden");
+        return;
+      }
+      refreshButton.disabled = true;
+      try {
+        const { data, error } = await requireDatabase()
+          .from("admin_notifications")
+          .select("id,user_id,event_type,membership_level,phone,message,submitted_fbk_code,is_read,created_at")
+          .order("created_at", { ascending: false })
+          .limit(100);
+        if (error) throw error;
+
+        const notifications = data || [];
+        const newest = notifications[0];
+        if (newest && newestNotificationId && newest.id !== newestNotificationId && newest.event_type === "fbk_submitted") {
+          playAlarm();
+          if ("Notification" in window && Notification.permission === "granted") {
+            try {
+              new Notification("Scholarbrige: FBK submitted", {
+                body: "A member submitted an FBK number. Open the admin panel to review it."
+              });
+            } catch (_) {}
+          }
+        }
+        if (newest) newestNotificationId = newest.id;
+
+        status.textContent = `${notifications.filter(item => !item.is_read).length} unread notification(s).`;
+        list.replaceChildren();
+        if (!notifications.length) {
+          list.textContent = "No notifications yet.";
+          return;
+        }
+
+        notifications.forEach(item => {
+          const card = document.createElement("article");
+          card.className = "task-card";
+          const heading = document.createElement("h3");
+          heading.textContent = item.event_type === "activation_requested"
+            ? "New activation request"
+            : item.event_type === "fbk_page_opened"
+              ? "Member reached FBK page"
+              : item.event_type === "upgrade_requested"
+                ? "Account upgrade requested"
+                : item.event_type === "withdrawal_requested"
+                  ? "Withdrawal request received"
+                  : "FBK number submitted";
+          const message = document.createElement("p");
+          message.textContent = item.message || "Administrator notification";
+          const details = document.createElement("p");
+          details.textContent = `Phone: ${item.phone || "—"} · Level: ${item.membership_level ?? "—"} · ${item.created_at ? new Date(item.created_at).toLocaleString() : ""}`;
+          card.append(heading, message, details);
+
+          if (item.event_type === "fbk_submitted" && item.submitted_fbk_code) {
+            const code = document.createElement("p");
+            code.textContent = "Submitted FBK number: " + item.submitted_fbk_code;
+            card.appendChild(code);
+          }
+
+          if (!item.is_read) {
+            const readButton = document.createElement("button");
+            readButton.type = "button";
+            readButton.textContent = "Mark as read";
+            readButton.addEventListener("click", async () => {
+              const { error: updateError } = await requireDatabase()
+                .from("admin_notifications")
+                .update({ is_read: true })
+                .eq("id", item.id);
+              if (updateError) {
+                status.textContent = "Could not mark notification as read: " + updateError.message;
+                return;
+              }
+              refreshAlerts();
+            });
+            card.appendChild(readButton);
+          }
+          list.appendChild(card);
+        });
+      } catch (error) {
+        console.error("Admin notification error:", error);
+        status.textContent = "Notifications could not load. Check the admin_notifications table, its columns, and approved-admin RLS policies.";
+      } finally {
+        refreshButton.disabled = false;
+      }
+    }
+
+    refreshButton.addEventListener("click", refreshAlerts);
+
+    // Establish the current newest notification without sounding for old alerts.
+    try {
+      const { data, error } = await requireDatabase()
+        .from("admin_notifications")
+        .select("id")
+        .order("created_at", { ascending: false })
+        .limit(1);
+      if (!error && data?.length) newestNotificationId = data[0].id;
+    } catch (error) {
+      console.warn("Could not initialise notification polling:", error);
+    }
+
+    await refreshAlerts();
+    if (notificationTimer) clearInterval(notificationTimer);
+    notificationTimer = setInterval(refreshAlerts, 8000);
+  }
+
+  async function updateSalePrice() {
+    const level = Number($("sellAccountLevel")?.value || 4);
+    const prices = { 1: 0, 2: 0, 3: 0, 4: 4200, 5: 12880, 6: 18000.8 };
+    setText("sellAccountPrice", "Estimated display price: " + formatMoney(prices[level] || 0) + ". Final requests require manual review.");
+  }
+
+  async function submitAccountSale(event) {
+    event.preventDefault();
+    if (!currentUser || currentProfile?.account_status !== "approved") {
+      return notice("Only approved members can submit an account service request.", "error");
+    }
+    const level = Number($("sellAccountLevel")?.value || 4);
+    const prices = { 4: 4200, 5: 12880, 6: 18000.8 };
+    const price = prices[level];
+    if (!price) return notice("Choose a valid account level.", "error");
+
+    try {
+      const { error } = await requireDatabase().from("account_sale_requests").insert({
+        user_id: currentUser.id,
+        level,
+        price,
+        status: "submitted"
+      });
+      if (error) throw error;
+      notice("Your account service request was submitted for manual review.", "success");
+    } catch (error) {
+      console.error("Account sale request failed:", error);
+      notice("Could not submit request: " + (error.message || "Confirm the account_sale_requests table columns."), "error");
+    }
+  }
+
+  async function copyReferral() {
+    const code = String($("refCode")?.value || $("refCode")?.textContent || currentProfile?.referral_code || "").trim();
+    if (!code || code.includes("Not available")) return notice("Your referral code is not available yet.", "warning");
+    try {
+      await navigator.clipboard.writeText(code);
+      notice("Referral code copied.", "success");
+    } catch (_) {
+      window.prompt("Copy your referral code:", code);
+    }
+  }
+
+  async function shareInvite() {
+    const code = String(currentProfile?.referral_code || $("refCode")?.value || "").trim();
+    if (!code) return notice("Your referral code is not available yet.", "warning");
+    const link = "https://tinyurl.com/yc5svrvs";
+    const text = `Join me on Scholarbrige Academic Hub. Use my referral code ${code}: ${link}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: BRAND_NAME, text, url: link });
+      } else if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        notice("Your referral message was copied. Share it with your friends.", "success");
+      } else {
+        window.prompt("Copy and share this invitation:", text);
+      }
+    } catch (error) {
+      if (error?.name !== "AbortError") window.prompt("Copy and share this invitation:", text);
+    }
+  }
+
+  function applyTheme(theme) {
+    const valid = THEME_ORDER.includes(theme) ? theme : "forest-green";
+    document.documentElement.dataset.theme = valid;
+    document.body.dataset.theme = valid;
+    try { localStorage.setItem("scholarbrige_theme", valid); } catch (_) {}
+  }
+
+  function rotateTheme() {
+    let started = Number(localStorage.getItem(THEME_KEY)) || Date.now();
+    if (Date.now() - started >= THEME_INTERVAL) {
+      const current = document.documentElement.dataset.theme || "forest-green";
+      const index = THEME_ORDER.indexOf(current);
+      applyTheme(THEME_ORDER[(index + 1) % THEME_ORDER.length]);
+      started = Date.now();
+      localStorage.setItem(THEME_KEY, String(started));
+    } else {
+      const saved = localStorage.getItem("scholarbrige_theme");
+      if (saved && THEME_ORDER.includes(saved)) applyTheme(saved);
+      else applyTheme("forest-green");
+    }
+  }
+
+  function updateCelestialMark() {
+    const mark = $("celestialMark");
+    const hour = new Date().getHours();
+    const night = hour >= 18 || hour < 6;
+    document.body.dataset.timephase = night ? "night" : "day";
+    if (mark) {
+      mark.textContent = night ? "☾" : "☀";
+      mark.setAttribute("aria-label", night ? "Night theme" : "Day theme");
+      mark.title = night ? "Night sky" : "Daylight";
+    }
+  }
+
+  function updateActivationCurrency() {
+    const note = $("activationCurrencyNote");
+    if (!note) return;
+    const country = currentProfile?.country || $("countrySelect")?.value || "Kenya";
+    const currency = COUNTRY_CURRENCY[country] || COUNTRY_CURRENCY.Kenya;
+    const levels = Object.entries(ACTIVATION_FEES).map(([level, fee]) => {
+      const amount = fee * currency.perKes;
+      return `L${level}: ${currency.symbol} ${amount.toLocaleString(currency.locale, { maximumFractionDigits: currency.decimals })}`;
+    });
+    note.textContent = country === "Kenya"
+      ? `Base activation fees: ${levels.join(" · ")}.`
+      : `Indicative ${currency.code} equivalents from the same KES base: ${levels.join(" · ")}. Estimates only; confirm the final amount through the official payment instructions.`;
+  }
+
+  function updateCountryWelcome() {
+    const select = $("countrySelect");
+    const welcome = $("countryWelcome");
+    if (!select || !welcome) { updateActivationCurrency(); return; }
+    const greetings = {
+      Kenya: "🇰🇪 Karibu to Scholarbrige!",
+      Uganda: "🇺🇬 Tukusanyukidde to Scholarbrige!",
+      Tanzania: "🇹🇿 Karibu Scholarbrige!",
+      Ghana: "🇬🇭 Akwaaba to Scholarbrige!",
+      Nigeria: "🇳🇬 Welcome to Scholarbrige!"
+    };
+    if (greetings[select.value]) {
+      welcome.textContent = greetings[select.value];
+      welcome.classList.remove("hidden");
+    } else {
+      welcome.classList.add("hidden");
+      welcome.textContent = "";
+    }
+  }
+
+
+  // Requested member tools. Database structures and policies are supplied in setup.sql.
+  const UPGRADE_FEES = { 2: 700, 3: 1400, 4: 2000, 5: 2780, 6: 3500, 7: 4200 };
+  let activeChatMember = null;
+  let chatRefreshTimer = null;
+  let upgradeMode = false;
+
+  function memberLevel() {
+    return Number(currentActivationRequest?.membership_level || currentProfile?.membership_level || 1);
+  }
+
+  function updateUpgradeOptions() {
+    const current = memberLevel();
+    setText("profileDisplayName", currentProfile?.full_name || currentProfile?.username || "Scholar");
+    setText("profileMemberLevel", `Current membership level: ${current}`);
+    setText("upgradeCurrentLevel", `Current membership level: ${current}`);
+    const select = $("upgradeNextLevel");
+    const form = $("upgradeForm");
+    const submitButton = form?.querySelector('[type="submit"]');
+    if (!select) return;
+    select.replaceChildren();
+
+    // From Level 7 onward, upgrades are organic only; no paid request can be submitted.
+    if (current >= 7) {
+      const option = docume
