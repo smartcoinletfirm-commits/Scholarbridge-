@@ -331,3 +331,420 @@
         startPendingView();
         return;
        }
+if (activation && ["requested", "position_issued", "position_submitted", "position_accepted"].includes(activation.status)) {
+        ensureVerificationView();
+        showView("verificationView");
+        setText("verificationStatus", fbk?.status === "rejected"
+          ? `Your previous FBK submission was rejected. ${fbk.admin_note ? "Admin note: " + fbk.admin_note + " " : ""}Enter the corrected FBK code and submit it again.`
+          : "Enter and submit your FBK code. After submission, your account waits for one manual administrator decision.");
+        const form = $("verificationForm");
+        if (form) form.classList.remove("hidden");
+
+        const pageAlertKey = "scholarbrige_fbk_page_alert_" + user.id;
+        if (!sessionStorage.getItem(pageAlertKey)) {
+          sessionStorage.setItem(pageAlertKey, "sent");
+          await sendAdminAlert("fbk_page_opened");
+        }
+        return;
+      }
+
+      ensureActivationView();
+      showView("activationView");
+      setText("activationStatus", "Choose a membership level and confirm your phone number to continue.");
+    } catch (error) {
+      console.error("Account routing failed:", error);
+      showView("authView");
+      showError("Could not load your account. Please refresh and try again.");
+    }
+  }
+
+  async function signup(event) {
+    event?.preventDefault();
+    hideNotices();
+
+    const form = $("signupForm");
+    if (!form || !form.reportValidity()) return;
+
+    const values = new FormData(form);
+    const fullName = String(values.get("full_name") || "").trim();
+    const email = String(values.get("email") || "").trim().toLowerCase();
+    const phone = cleanPhone(values.get("phone"));
+    const country = String(values.get("country") || "").trim();
+    const educationLevel = String(values.get("education_level") || "").trim();
+    const password = String(values.get("password") || "");
+    const referralCode = String(values.get("referral_code") || "").trim() || null;
+    const ageConfirmed = values.get("age_confirmed") === "on";
+    const button = form.querySelector('[type="submit"]');
+
+    if (!ageConfirmed) return showError("Please confirm that you are 18 years old or above.");
+    if (!phone) return showError("Enter a valid phone number.");
+
+    try {
+      setButtonLoading(button, true, "Creating account…");
+      const { data, error } = await requireDatabase().auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            full_name: fullName,
+            phone,
+            country,
+            education_level: educationLevel,
+            referral_code: referralCode,
+            age_confirmed: ageConfirmed
+          }
+        }
+      });
+      if (error) throw error;
+
+      if (data?.user && data.session) {
+        currentUser = data.user;
+        await loadProfile(currentUser);
+        notice("Account created. Continue to membership activation.", "success");
+        await routeUser(currentUser);
+      } else {
+        notice("Your sign-up was received. If email confirmation is enabled in Supabase, complete that step before logging in.", "success");
+        const loginForm = $("loginForm");
+        if (loginForm) {
+          const emailInput = loginForm.querySelector('[name="email"]');
+          if (emailInput) emailInput.value = email;
+        }
+        activateTab("loginForm");
+      }
+    } catch (error) {
+      console.error("Signup error:", error);
+      showError("Could not create account: " + (error.message || "Please check your details and try again."));
+    } finally {
+      setButtonLoading(button, false);
+    }
+  }
+
+  async function login(event) {
+    event?.preventDefault();
+    hideNotices();
+
+    const form = $("loginForm");
+    if (!form || !form.reportValidity()) return;
+    const values = new FormData(form);
+    const email = String(values.get("email") || "").trim().toLowerCase();
+    const password = String(values.get("password") || "");
+    const button = form.querySelector('[type="submit"]');
+
+    try {
+      setButtonLoading(button, true, "Signing in…");
+      const { data, error } = await requireDatabase().auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      currentUser = data.user;
+      await routeUser(currentUser);
+    } catch (error) {
+      console.error("Login error:", error);
+      showError("Login failed: " + (error.message || "Check your email and password."));
+    } finally {
+      setButtonLoading(button, false);
+    }
+  }
+
+  async function resetPassword() {
+    const email = String($("loginForm")?.querySelector('[name="email"]')?.value || "").trim().toLowerCase();
+    if (!email) {
+      notice("Enter your email address in the login form first.", "warning");
+      return;
+    }
+    try {
+      const { error } = await requireDatabase().auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin + window.location.pathname
+      });
+      if (error) throw error;
+      notice("If password recovery is enabled, a reset link will be sent to your email.", "success");
+    } catch (error) {
+      console.error("Password reset error:", error);
+      showError("Could not request a password reset: " + (error.message || "Please try again."));
+    }
+  }
+
+  async function requestActivation(event) {
+    event?.preventDefault();
+    if (!currentUser) return showError("Please sign in first.");
+
+    const form = $("activationForm");
+    if (!form || !form.reportValidity()) return;
+    const levelInput = form.querySelector('[name="membership_level"]') || $("membershipLevel");
+    const level = Number(levelInput?.value || 1);
+    const phone = cleanPhone(form.querySelector('[name="phone"]')?.value || currentProfile?.phone);
+    const fullName = String(form.querySelector('[name="full_name"]')?.value || currentProfile?.full_name || "").trim();
+    const button = form.querySelector('[type="submit"]');
+
+    if (!phone) return showError("Enter your phone number.");
+    if (!ACTIVATION_FEES[level]) return showError("Choose a valid membership level.");
+
+    try {
+      setButtonLoading(button, true, "Saving request…");
+      const { data, error } = await requireDatabase().rpc("scf_submit_activation", {
+        p_full_name: fullName,
+        p_phone: phone,
+        p_membership_level: level
+      });
+      if (error) throw error;
+
+      currentActivationRequest = data && typeof data === "object" ? data : null;
+      await sendAdminAlert("activation_requested");
+
+      // If the RPC does not return a row, re-read the saved request.
+      if (!currentActivationRequest) await latestActivationRequest(currentUser.id);
+      notice("Activation request saved. Continue to submit your FBK code.", "success");
+      await routeUser(currentUser);
+    } catch (error) {
+      console.error("Activation request error:", error);
+      showError("Activation request failed: " + (error.message || "Please try again."));
+    } finally {
+      setButtonLoading(button, false);
+    }
+  }
+
+  async function verifyActivationCode(event) {
+    event?.preventDefault();
+    if (!currentUser) return showError("Please sign in first.");
+
+    const form = $("verificationForm");
+    if (!form || !form.reportValidity()) return;
+    const input = form.querySelector('[name="position_number"], [name="submitted_code"], [name="fbk_code"]');
+    const code = String(input?.value || "").trim();
+    if (!/^[A-Za-z0-9-]{2,80}$/.test(code)) return showError("Enter a valid FBK code.");
+
+    const button = form.querySelector('[type="submit"]');
+    const client = requireDatabase();
+
+    try {
+      setButtonLoading(button, true, "Submitting code…");
+      const { data: previous, error: lookupError } = await client
+        .from("fbk_code_submissions")
+        .select("id,status")
+        .eq("user_id", currentUser.id)
+        .order("created_at", { ascending: false })
+        .limit(1);
+      if (lookupError) throw lookupError;
+
+      const latest = previous?.[0];
+      if (latest && ["submitted", "reviewed"].includes(latest.status)) {
+        return showError("Your FBK code is already under review. Wait for the administrator's decision.");
+      }
+
+      if (latest && latest.status === "rejected") {
+        const { error } = await client
+          .from("fbk_code_submissions")
+          .update({
+            submitted_code: code,
+            status: "submitted",
+            admin_note: null,
+            reviewed_at: null
+          })
+          .eq("id", latest.id)
+          .eq("user_id", currentUser.id);
+        if (error) throw error;
+      } else {
+        const { error } = await client
+          .from("fbk_code_submissions")
+          .insert({
+            user_id: currentUser.id,
+            submitted_code: code,
+            status: "submitted"
+          });
+        if (error) throw error;
+      }
+
+      await sendAdminAlert("fbk_submitted", code);
+      upgradeMode = false;
+
+      const key = CODE_DELAY_KEY_PREFIX + currentUser.id;
+      const started = Date.now();
+      localStorage.setItem(key, String(started));
+      localStorage.setItem(REVIEW_KEY_PREFIX + currentUser.id, String(started));
+      if (input) input.value = "";
+
+      setText("verificationStatus", "Your FBK code has been received and is awaiting a manual administrator decision.");
+      notice("Your FBK code was submitted. Your account will not activate automatically.", "success");
+      startPendingView();
+    } catch (error) {
+      console.error("FBK submission error:", error);
+      showError("Could not submit your FBK code: " + (error.message || "Please try again."));
+    } finally {
+      setButtonLoading(button, false);
+    }
+  }
+
+  async function refreshStatus() {
+    if (!currentUser) return showError("Please sign in first.");
+    await routeUser(currentUser);
+    notice("Account status refreshed.", "success");
+  }
+
+  async function logout() {
+    try {
+      if (notificationTimer) clearInterval(notificationTimer);
+      if (adminQueueTimer) clearInterval(adminQueueTimer);
+      if (reviewTimer) clearInterval(reviewTimer);
+      if (chatRefreshTimer) clearInterval(chatRefreshTimer);
+      notificationTimer = adminQueueTimer = reviewTimer = chatRefreshTimer = null;
+      const { error } = await requireDatabase().auth.signOut();
+      if (error) throw error;
+    } catch (error) {
+      console.error("Logout error:", error);
+    } finally {
+      currentUser = null;
+      currentProfile = null;
+      currentActivationRequest = null;
+      showView("authView");
+      notice("You have signed out.", "success");
+    }
+  }
+
+  function activateTab(formId) {
+    document.querySelectorAll("[data-tab]").forEach(button => {
+      const active = button.dataset.tab === formId;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-selected", active ? "true" : "false");
+    });
+    ["loginForm", "signupForm"].forEach(id => {
+      const form = $(id);
+      if (form) form.classList.toggle("hidden", id !== formId);
+    });
+  }
+
+  async function contactSupport() {
+    const subject = encodeURIComponent(BRAND_NAME + " support request");
+    const body = encodeURIComponent("Hello Scholarbrige Support,\n\nI need help with my account.\n\nName: " + (currentProfile?.full_name || "") + "\nEmail: " + (currentUser?.email || "") + "\n");
+    window.location.href = `mailto:${SUPPORT_EMAIL}?subject=${subject}&body=${body}`;
+  }
+
+  async function loadDashboardData() {
+    if (!currentUser || !currentProfile) return;
+    setText("memberName", currentProfile.full_name || currentProfile.username || "Scholar");
+    setText("dashStatus", "Your Scholarbrige space is ready.");
+    setText("refCode", currentProfile.referral_code || "Not available");
+    const statusWord = document.querySelector(".status-word");
+    if (statusWord) statusWord.textContent = currentProfile.account_status === "approved" ? "Active" : currentProfile.account_status || "Pending";
+
+    const client = requireDatabase();
+    try {
+      const { data: referrals, error } = await client
+        .from("referrals")
+        .select("id")
+        .eq("referrer_id", currentUser.id);
+      if (error) throw error;
+      setText("refCount", referrals?.length || 0);
+    } catch (error) {
+      console.warn("Referral count unavailable:", error.message);
+      setText("refCount", "—");
+    }
+
+    try {
+      const { data: wallet, error } = await client
+        .from("wallets")
+        .select("*")
+        .eq("user_id", currentUser.id)
+        .maybeSingle();
+      if (error) throw error;
+      setText("walletHeadline", formatBalanceMoney(wallet?.balance ?? wallet?.available_balance ?? 0));
+      setText("reservedBalance", formatBalanceMoney(wallet?.reserved_balance ?? 0));
+      setText("totalWithdrawn", formatBalanceMoney(wallet?.total_withdrawn ?? 0));
+      const walletNote = document.querySelector("#walletHeadline")?.closest(".wallet-metric")?.querySelector(".wallet-currency-note");
+      if (walletNote) walletNote.textContent = `Approximate ${getMemberCurrency().code} display. Official wallet records remain in KES.`;
+    } catch (error) {
+      console.warn("Wallet information unavailable:", error.message);
+      setText("walletHeadline", `${getMemberCurrency().symbol} —`);
+      setText("reservedBalance", `${getMemberCurrency().symbol} —`);
+      setText("totalWithdrawn", `${getMemberCurrency().symbol} —`);
+    }
+
+    await loadTasks();
+  }
+
+  async function showDashboard(profile) {
+    currentProfile = profile || currentProfile;
+    showView("dashboardView");
+
+    const isAdmin = currentProfile?.role === "admin" && currentProfile?.account_status === "approved";
+    ["adminActivationPanel", "adminSalePanel", "adminTaskReview", "scholarbrigeAdminPanel"].forEach(id => {
+      const element = $(id);
+      if (element) element.classList.toggle("hidden", !isAdmin);
+    });
+
+    if (isAdmin) {
+      loadAdminActivationQueue().catch(error => console.warn("Activation queue:", error));
+      loadAdminSaleQueue().catch(error => console.warn("Sale queue:", error));
+      loadAdminTaskSubmissions().catch(error => console.warn("Task review:", error));
+      loadScholarbrigeAdminPanel().catch(error => console.warn("Admin notifications:", error));
+
+      if (adminQueueTimer) clearInterval(adminQueueTimer);
+      adminQueueTimer = setInterval(() => {
+        loadAdminActivationQueue().catch(error => console.warn("Activation queue:", error));
+        loadAdminSaleQueue().catch(error => console.warn("Sale queue:", error));
+      }, 20000);
+    } else {
+      if (adminQueueTimer) clearInterval(adminQueueTimer);
+      if (notificationTimer) clearInterval(notificationTimer);
+      adminQueueTimer = notificationTimer = null;
+    }
+
+    await latestActivationRequest(currentUser.id);
+    updateUpgradeOptions();
+    if (currentProfile?.avatar_path) {
+      const { data: avatarData } = requireDatabase().storage.from("scholarbrige-avatars").getPublicUrl(currentProfile.avatar_path);
+      if (avatarData?.publicUrl && $("memberAvatar")) $("memberAvatar").src = avatarData.publicUrl;
+    }
+    await loadWithdrawalHistory();
+    await loadDashboardData();
+  }
+
+  async function loadTasks() {
+    if (!currentUser || !currentProfile || currentProfile.account_status !== "approved") return;
+    const list = $("taskList");
+    if (!list) return;
+    list.textContent = "Loading available tasks…";
+    try {
+      const { data, error } = await requireDatabase()
+        .from("tasks")
+        .select("id,title,description,reward_kes,reward_points,is_active,created_at")
+        .eq("is_active", true)
+        .order("created_at", { ascending: false })
+        .limit(100);
+      if (error) throw error;
+      list.replaceChildren();
+      if (!data?.length) {
+        list.textContent = "No active tasks are available right now.";
+        setText("taskNotice", "");
+        return;
+      }
+      data.forEach(task => {
+        const card = document.createElement("article");
+        card.className = "task-card";
+        const title = document.createElement("h3");
+        title.textContent = task.title || "Learning task";
+        const description = document.createElement("p");
+        description.textContent = task.description || "Open this task and follow its instructions.";
+        const reward = document.createElement("p");
+        reward.textContent = "Reward: " + formatMoney(task.reward_kes ?? 20);
+        const form = document.createElement("form");
+        form.className = "form";
+        const label = document.createElement("label");
+        label.textContent = "Your response";
+        const textarea = document.createElement("textarea");
+        textarea.name = "response";
+        textarea.required = true;
+        textarea.rows = 3;
+        textarea.placeholder = "Enter your completed work or submission link";
+        label.appendChild(textarea);
+        const submit = document.createElement("button");
+        submit.type = "submit";
+        submit.className = "primary";
+        submit.textContent = "Submit task";
+        form.append(label, submit);
+        form.addEventListener("submit", event => submitTask(event, task.id, textarea, submit));
+        card.append(title, description, reward, form);
+        list.appendChild(card);
+      });
+      setText("taskNotice", "Task rewards remain pending until reviewed.");
+    } catch (error) {
+      console.error("Task loading error:", error);
+      list.textContent = "Tasks could not load. Check the tasks table and its Supabase read policy, then refresh.";
+         }
