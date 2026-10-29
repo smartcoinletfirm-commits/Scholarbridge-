@@ -106,7 +106,7 @@
         delete button.dataset.originalText;
       }
     }
-  }
+  
 
   function showView(id) {
     const views = ["authView", "activationView", "verificationView", "pendingView", "dashboardView", "supportView"];
@@ -984,7 +984,7 @@
           });
         }
       }
-    } catch (error) {
+    catch (error) {
       console.warn("Public Hall of Fame could not load:", error);
       const list = $("publicScholarList");
       if (list) list.textContent = "The Hall of Fame is temporarily unavailable. Please try again later.";
