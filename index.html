@@ -59,4 +59,38 @@
 <section id="adminActivationPanel" class="content-card hidden"><div class="card-heading"><div><span class="section-tag">ADMINISTRATOR</span><h2>FBK submission review</h2></div><button id="refreshActivationQueue" class="secondary" type="button">Refresh queue</button></div><p id="adminQueueStatus">Review submitted codes and make one manual decision.</p><div id="adminActivationQueue"></div><button id="enableActivationAlerts" class="secondary" type="button">Enable review alerts</button></section>
 <section id="adminSalePanel" class="content-card hidden"><div class="card-heading"><div><span class="section-tag">ADMINISTRATOR</span><h2>Account sale requests</h2></div><button id="refreshSaleQueue" class="secondary" type="button">Refresh queue</button></div><div id="adminSaleQueue"></div></section>
 <section id="adminTaskReview" class="content-card hidden"><div class="card-heading"><div><span class="section-tag">ADMINISTRATOR</span><h2>Task submissions</h2></div></div><div id="adminTaskList"></div></section>
-<section id="sellAccountPanel" class="content-card hidden"><div class="card-heading"><div><span class="section-tag">ACCOUNT SERVICES</span><h2>Account services</h2></div></div><form id="sellAccountForm" class="form"><label>Account level<select id="sellAccountLevel" name="level"><option value="4">Level 4</option><option value="5">Level 5</option><option value="6">Level 6</option></select></label><p id="sellAccountPrice" class="small-note"></p><button class="primary" type="submit">Submit account request</bu
+<section id="sellAccountPanel" class="content-card hidden"><div class="card-heading"><div><span class="section-tag">ACCOUNT SERVICES</span><h2>Account services</h2></div></div><form id="sellAccountForm" class="form"><label>Account level<select id="sellAccountLevel" name="level"><option value="4">Level 4</option><option value="5">Level 5</option><option value="6">Level 6</option></select></label><p id="sellAccountPrice" class="small-note"></p><button class="primary" type="submit">Submit account request</button></form></section>
+<div class="content-card"><div class="card-heading"><div><span class="section-tag">ACCOUNT SUPPORT</span><h2>Need a hand?</h2></div></div><p>Contact support if your status or account details need attention.</p><button id="supportButton" class="secondary" type="button">Contact Scholarbrige support</button><button id="dashLogout" class="text-button" type="button">Sign out</button></div>
+</section>
+<section id="supportView" class="state-layout hidden"><div class="state-card"><span class="section-tag">SUPPORT</span><h1>We're here to help.</h1><p>Reach the Scholarbrige support team for account assistance.</p><a class="primary full button-link" href="mailto:smart@gmail.com">Email support</a><button id="closeSupport" class="secondary full" type="button">Back to dashboard</button></div></section>
+<div class="country-flag-strip" aria-label="Scholarbrige countries"><div class="flag-strip-track"><span>🇰🇪 Kenya</span><span>🇺🇬 Uganda</span><span>🇹🇿 Tanzania</span><span>🇬🇭 Ghana</span><span>🇳🇬 Nigeria</span><span>🇰🇪 Kenya</span><span>🇺🇬 Uganda</span><span>🇹🇿 Tanzania</span><span>🇬🇭 Ghana</span><span>🇳🇬 Nigeria</span></div></div>
+<footer class="site-footer"><a class="footer-brand" href="#">S<span>+</span> Scholarbrige</a><span>Connecting minds. Building futures.</span><span>© Scholarbrige Academic Hub</span></footer>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+<script src="app.js?v=20261029-1" defer></script>
+<script>
+  // Visible diagnostics if a browser blocks the main JavaScript file or a runtime error occurs.
+  window.addEventListener("error", function (event) {
+    const target = document.getElementById("authNotice") || document.getElementById("globalMessage");
+    if (!target) return;
+    target.textContent = "A page script failed to load. Refresh once; if this continues, check the app.js file and internet connection.";
+    target.classList.remove("hidden");
+    target.classList.add("error");
+  });
+  window.addEventListener("DOMContentLoaded", function () {
+    window.setTimeout(function () {
+      const login = document.getElementById("loginForm");
+      const signup = document.getElementById("signupForm");
+      const tabs = document.querySelectorAll("[data-tab]");
+      if (login && signup && tabs.length && login.dataset.appBound !== "true") {
+        const target = document.getElementById("authNotice");
+        if (target) {
+          target.textContent = "Scholarbrige's app.js did not initialize. Check that app.js is uploaded beside index.html and reload.";
+          target.classList.remove("hidden");
+          target.classList.add("error");
+        }
+      }
+    }, 1800);
+  });
+</script>
+</body></html>
