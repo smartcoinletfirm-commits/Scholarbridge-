@@ -1471,4 +1471,314 @@ async function saveHallLeaderpost(event) {
 
     // From Level 7 onward, upgrades are organic only; no paid request can be submitted.
     if (current >= 7) {
-      const option = docume
+      const option = document.createElement("option");
+      option.value = "";
+      option.textContent = "Organic Upgrade Only";
+      select.appendChild(option);
+      select.disabled = true;
+      if (submitButton) submitButton.classList.add("hidden");
+      if (form) form.dataset.organicOnly = "true";
+      setText("upgradeFeeText", "Organic Upgrade Only — paid upgrades are not available from Level 7 onward.");
+      return;
+    }
+
+    if (submitButton) submitButton.classList.remove("hidden");
+    if (form) delete form.dataset.organicOnly;
+    const next = current + 1;
+    const fee = UPGRADE_FEES[next];
+    if (!fee) {
+      const option = document.createElement("option");
+      option.value = "";
+      option.textContent = "Organic Upgrade Only";
+      select.appendChild(option);
+      select.disabled = true;
+      if (submitButton) submitButton.classList.add("hidden");
+      if (form) form.dataset.organicOnly = "true";
+      setText("upgradeFeeText", "Organic Upgrade Only — paid upgrades are not available at this level.");
+      return;
+    }
+    select.disabled = false;
+    const option = document.createElement("option");
+    option.value = String(next);
+    option.textContent = `Level ${current} → ${next} · ${formatMoney(fee)}`;
+    select.appendChild(option);
+    setText("upgradeFeeText", `Upgrade fee: ${formatMoney(fee)}`);
+  }
+
+  async function submitUpgrade(event) {
+    event.preventDefault();
+    if (!currentUser || currentProfile?.account_status !== "approved") return notice("Only approved members can request an upgrade.", "error");
+    if (memberLevel() >= 7 || $("upgradeForm")?.dataset.organicOnly === "true") {
+      updateUpgradeOptions();
+      return notice("Organic Upgrade Only: paid upgrade requests are unavailable from Level 7 onward.", "info");
+    }
+    const nextLevel = Number($("upgradeNextLevel")?.value);
+    const currentLevel = memberLevel();
+    const fee = UPGRADE_FEES[nextLevel];
+    if (nextLevel !== currentLevel + 1 || !fee) return notice("Choose the next available membership level.", "error");
+    const button = event.currentTarget.querySelector('[type="submit"]');
+    try {
+      setButtonLoading(button, true, "Preparing FBK step…");
+      const { data, error } = await requireDatabase().from("scholarbrige_upgrade_requests").insert({
+        user_id: currentUser.id, current_level: currentLevel, next_level: nextLevel, fee, status: "awaiting_fbk"
+      }).select("id").single();
+      if (error) throw error;
+      const { error: notifyError } = await requireDatabase().rpc("scholarbrige_notify_upgrade_request", { p_upgrade_request_id: data.id });
+      if (notifyError) console.warn("Upgrade admin notification failed:", notifyError.message);
+      upgradeMode = true;
+      setText("verificationStatus", `Upgrade request for Level ${currentLevel} → ${nextLevel} (${formatMoney(fee)}) is ready. Submit your FBK reference code below. An administrator must manually review it.`);
+      await sendAdminAlert("fbk_page_opened");
+      showView("verificationView");
+      notice("Upgrade request created. Continue with the existing FBK submission page.", "success");
+    } catch (error) {
+      console.error("Upgrade request failed:", error);
+      notice("Could not start the upgrade: " + (error.message || "Check the setup SQL and try again."), "error");
+    } finally { setButtonLoading(button, false); }
+  }
+
+  async function uploadMemberAvatar(event) {
+    const file = event.target.files?.[0];
+    if (!file || !currentUser) return;
+    if (!/^image\/(png|jpeg|webp)$/.test(file.type) || file.size > 3 * 1024 * 1024) {
+      notice("Choose a JPG, PNG or WebP image under 3 MB.", "error"); event.target.value = ""; return;
+    }
+    try {
+      const extension = file.type === "image/jpeg" ? "jpg" : file.type.split("/")[1];
+      const path = `${currentUser.id}/avatar-${Date.now()}.${extension}`;
+      const client = requireDatabase();
+      const { error: uploadError } = await client.storage.from("scholarbrige-avatars").upload(path, file, { upsert: true, contentType: file.type });
+      if (uploadError) throw uploadError;
+      const { data: publicData } = client.storage.from("scholarbrige-avatars").getPublicUrl(path);
+      const avatarUrl = publicData?.publicUrl;
+      const { error: profileError } = await client.from("profiles").update({ avatar_path: path }).eq("id", currentUser.id);
+      if (profileError) throw profileError;
+      currentProfile.avatar_path = path;
+      const img = $("memberAvatar"); if (img && avatarUrl) img.src = avatarUrl;
+      notice("Profile photo uploaded.", "success");
+    } catch (error) {
+      console.error("Avatar upload failed:", error);
+      notice("Could not upload the photo. Run setup.sql and check Storage/profile permissions.", "error");
+    } finally { event.target.value = ""; }
+  }
+
+  async function submitWithdrawal(event) {
+    event.preventDefault();
+    if (!currentUser || currentProfile?.account_status !== "approved") return notice("Only approved members can request withdrawals.", "error");
+    const amount = Number($("withdrawAmount")?.value);
+    const phone = cleanPhone($("withdrawPhone")?.value || currentProfile?.phone);
+    if (!Number.isFinite(amount) || amount < 2000) return notice("The minimum withdrawal is KES 2,000.", "error");
+    if (!phone) return notice("Enter a valid M-Pesa phone number.", "error");
+    const button = event.currentTarget.querySelector('[type="submit"]');
+    try {
+      setButtonLoading(button, true, "Submitting request…");
+      const { error } = await requireDatabase().rpc("scholarbrige_request_withdrawal", { p_amount: amount, p_phone: phone });
+      if (error) throw error;
+      event.currentTarget.reset();
+      setText("withdrawNotice", "Withdrawal request submitted for manual review. No money has been sent yet.");
+      await loadWithdrawalHistory();
+    } catch (error) {
+      console.error("Withdrawal request failed:", error);
+      setText("withdrawNotice", "Could not submit: " + (error.message || "Check wallet balance and setup.sql."));
+    } finally { setButtonLoading(button, false); }
+  }
+
+  async function loadWithdrawalHistory() {
+    if (!currentUser || !$("withdrawHistory")) return;
+    const root = $("withdrawHistory"); root.textContent = "Loading requests…";
+    try {
+      const { data, error } = await requireDatabase().from("scholarbrige_withdrawal_requests").select("id,amount,phone,status,created_at").eq("user_id", currentUser.id).order("created_at", { ascending: false }).limit(10);
+      if (error) throw error;
+      root.replaceChildren();
+      if (!data?.length) { root.textContent = "No withdrawal requests yet."; return; }
+      data.forEach(row => { const item = document.createElement("div"); item.className = "history-item"; const left = document.createElement("span"); left.textContent = formatBalanceMoney(row.amount); const right = document.createElement("small"); right.textContent = `${row.status} · ${new Date(row.created_at).toLocaleDateString()}`; item.append(left, right); root.appendChild(item); });
+    } catch (error) { root.textContent = "Withdrawal history unavailable until setup.sql is applied."; console.warn(error); }
+  }
+
+  let memberSearchDelay = null;
+  async function searchMembers() {
+    const query = String($("memberSearchInput")?.value || "").trim();
+    const root = $("memberSearchResults"); if (!root) return;
+    if (query.length < 2) { root.textContent = "Type at least two characters to search."; return; }
+    root.textContent = "Searching approved members…";
+    try {
+      const { data, error } = await requireDatabase().rpc("scholarbrige_search_members", { p_query: query });
+      if (error) throw error;
+      root.replaceChildren();
+      if (!data?.length) { root.textContent = "No matching approved members found."; return; }
+      data.forEach(member => {
+        if (member.id === currentUser?.id) return;
+        const row = document.createElement("div"); row.className = "member-result";
+        const img = document.createElement("img"); img.alt = "";
+        const avatarPath = member.avatar_path;
+        const avatarUrl = avatarPath ? requireDatabase().storage.from("scholarbrige-avatars").getPublicUrl(avatarPath).data?.publicUrl : null;
+        img.src = avatarUrl || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Crect width='80' height='80' rx='40' fill='%23e9f7d1'/%3E%3Ctext x='40' y='50' font-size='32' text-anchor='middle' fill='%23073b2b'%3ES%3C/text%3E%3C/svg%3E";
+        const info = document.createElement("div"); info.className = "member-result-info"; const name = document.createElement("b"); name.textContent = member.full_name || member.username || "Scholar"; const small = document.createElement("small"); small.textContent = member.username ? `@${member.username}` : "Scholarbrige member"; info.append(name, small);
+        const button = document.createElement("button"); button.className = "secondary"; button.type = "button"; button.textContent = "Message"; button.addEventListener("click", () => openPrivateChat(member)); row.append(img, info, button); root.appendChild(row);
+      });
+    } catch (error) { console.error("Member search failed:", error); root.textContent = "Member search is not ready. Apply setup.sql and confirm RPC permissions."; }
+  }
+
+  async function openPrivateChat(member) {
+    activeChatMember = member;
+    setText("chatHeading", `Chat with ${member.full_name || member.username || "Scholar"}`);
+    $("chatForm")?.classList.remove("hidden");
+    await loadPrivateMessages();
+    if (chatRefreshTimer) clearInterval(chatRefreshTimer);
+    chatRefreshTimer = setInterval(loadPrivateMessages, 7000);
+  }
+
+  async function loadPrivateMessages() {
+    if (!activeChatMember || !currentUser || !$("chatMessages")) return;
+    const root = $("chatMessages");
+    try {
+      const client = requireDatabase();
+      const { data, error } = await client.from("scholarbrige_private_messages").select("id,sender_id,recipient_id,body,created_at,read_at").or(`and(sender_id.eq.${currentUser.id},recipient_id.eq.${activeChatMember.id}),and(sender_id.eq.${activeChatMember.id},recipient_id.eq.${currentUser.id})`).order("created_at", { ascending: true }).limit(100);
+      if (error) throw error;
+      root.replaceChildren();
+      if (!data?.length) { root.textContent = "No messages yet. Start the conversation below."; return; }
+      data.forEach(message => { const bubble = document.createElement("article"); bubble.className = "chat-message" + (message.sender_id === currentUser.id ? " mine" : ""); const body = document.createElement("p"); body.textContent = message.body; const time = document.createElement("time"); time.dateTime = message.created_at; time.textContent = new Date(message.created_at).toLocaleString(); bubble.append(body, time); root.appendChild(bubble); });
+      root.scrollTop = root.scrollHeight;
+      await client.from("scholarbrige_private_messages").update({ read_at: new Date().toISOString() }).eq("sender_id", activeChatMember.id).eq("recipient_id", currentUser.id).is("read_at", null);
+    } catch (error) { console.error("Private messages failed:", error); root.textContent = "Private chat is unavailable until setup.sql and its RLS policies are applied."; }
+  }
+
+  async function sendPrivateMessage(event) {
+    event.preventDefault();
+    const body = String($("chatMessageInput")?.value || "").trim();
+    if (!body || !activeChatMember || !currentUser) return;
+    try {
+      const { error } = await requireDatabase().from("scholarbrige_private_messages").insert({ sender_id: currentUser.id, recipient_id: activeChatMember.id, body });
+      if (error) throw error;
+      $("chatMessageInput").value = "";
+      setText("chatNotice", "Message sent.");
+      await loadPrivateMessages();
+    } catch (error) { console.error("Message send failed:", error); setText("chatNotice", "Could not send message. Check chat table permissions and setup.sql."); }
+  }
+
+  function bindMemberTools() {
+    bind("withdrawForm", "submit", submitWithdrawal);
+    bind("upgradeForm", "submit", submitUpgrade);
+    bind("avatarUpload", "change", uploadMemberAvatar);
+    bind("chatForm", "submit", sendPrivateMessage);
+    bind("upgradeNextLevel", "change", () => {
+      if (memberLevel() >= 7) return setText("upgradeFeeText", "Organic Upgrade Only — paid upgrades are not available from Level 7 onward.");
+      const fee = UPGRADE_FEES[Number($("upgradeNextLevel")?.value)];
+      setText("upgradeFeeText", fee ? `Upgrade fee: ${formatMoney(fee)}` : "No upgrade fee available.");
+    });
+    bind("memberSearchInput", "input", () => { if (memberSearchDelay) clearTimeout(memberSearchDelay); memberSearchDelay = setTimeout(searchMembers, 350); });
+  }
+
+  function bindEvents() {
+    // Bind authentication first so optional dashboard features cannot block login/signup.
+    bind("loginForm", "submit", login);
+    bind("signupForm", "submit", signup);
+    bind("activationForm", "submit", requestActivation);
+    bind("verificationForm", "submit", verifyActivationCode);
+    bind("resetPassword", "click", resetPassword);
+    bind("checkVerification", "click", refreshStatus);
+    bind("checkPending", "click", refreshStatus);
+    ["logoutActivation", "logoutVerification", "logoutPending", "logoutDashboard", "dashLogout"].forEach(id => bind(id, "click", logout));
+    bind("showSupport", "click", () => showView("supportView"));
+    bind("supportButton", "click", contactSupport);
+    bind("closeSupport", "click", () => showView("dashboardView"));
+    bind("copyReferral", "click", copyReferral);
+    bind("shareInvite", "click", shareInvite);
+    bind("refreshTasks", "click", loadTasks);
+    bind("refreshActivationQueue", "click", loadAdminActivationQueue);
+    bind("refreshSaleQueue", "click", loadAdminSaleQueue);
+    bind("enableActivationAlerts", "click", async () => {
+      if (!("Notification" in window)) return notice("Browser notifications are not supported here.", "warning");
+      const permission = await Notification.requestPermission();
+      notice(permission === "granted" ? "Browser notifications enabled while the admin page is running." : "Notification permission was not granted.", permission === "granted" ? "success" : "warning");
+    });
+    bind("sellAccountForm", "submit", submitAccountSale);
+    bind("sellAccountLevel", "change", updateSalePrice);
+    bind("countrySelect", "change", updateCountryWelcome);
+    bind("membershipLevel", "change", updateActivationCurrency);
+
+    // Bind optional member tools only after core authentication controls are connected.
+    try {
+      bindMemberTools();
+    } catch (error) {
+      console.error("Optional member tools could not be initialized:", error);
+    }
+
+    document.querySelectorAll("[data-tab]").forEach(button => {
+      if (button.dataset.appTabBound === "true") return;
+      button.addEventListener("click", () => activateTab(button.dataset.tab));
+      button.dataset.appTabBound = "true";
+    });
+  }
+
+  async function startApp() {
+    bindEvents();
+    rotateTheme();
+    setInterval(rotateTheme, 60 * 1000); // Checks the 40-minute theme interval without changing it every minute.
+    updateCelestialMark();
+    setInterval(updateCelestialMark, 60 * 1000);
+    updateCountryWelcome();
+    updateActivationCurrency();
+    updateSalePrice();
+    loadPublicHallOfFame();
+
+    if (!db) {
+      showView("authView");
+      showError("The sign-in service did not load. Check your internet connection and reload the page.");
+      return;
+    }
+
+    try {
+      const { data, error } = await db.auth.getSession();
+      if (error) throw error;
+      currentUser = data?.session?.user || null;
+      if (currentUser) {
+        await routeUser(currentUser);
+      } else {
+        showView("authView");
+      }
+    } catch (error) {
+      console.error("Startup error:", error);
+      showView("authView");
+      showError("Scholarbrige could not start: " + (error.message || "Refresh and try again."));
+    }
+
+    if (!authListenerRegistered) {
+      authListenerRegistered = true;
+      db.auth.onAuthStateChange((event, session) => {
+        currentUser = session?.user || null;
+        if (event === "SIGNED_OUT") {
+          currentProfile = null;
+          showView("authView");
+          return;
+        }
+        if (currentUser && ["SIGNED_IN", "TOKEN_REFRESHED", "USER_UPDATED"].includes(event)) {
+          // Defer to avoid running database calls inside the auth event callback.
+          setTimeout(() => routeUser(currentUser), 0);
+        }
+      });
+    }
+  }
+
+  function safeStartApp() {
+    try {
+      const result = startApp();
+      if (result && typeof result.catch === "function") {
+        result.catch(error => {
+          console.error("Unexpected Scholarbrige startup error:", error);
+          showView("authView");
+          showError("Scholarbrige could not start: " + (error?.message || "Please reload and try again."));
+        });
+      }
+    } catch (error) {
+      console.error("Unexpected Scholarbrige startup error:", error);
+      showView("authView");
+      showError("Scholarbrige could not start: " + (error?.message || "Please reload and try again."));
+    }
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", safeStartApp, { once: true });
+  } else {
+    safeStartApp();
+  }
+})();
