@@ -748,3 +748,336 @@ if (activation && ["requested", "position_issued", "position_submitted", "positi
       console.error("Task loading error:", error);
       list.textContent = "Tasks could not load. Check the tasks table and its Supabase read policy, then refresh.";
          }
+async function submitTask(event, taskId, textarea, button) {
+    event.preventDefault();
+    const response = String(textarea.value || "").trim();
+    if (!response) return;
+    try {
+      setButtonLoading(button, true, "Submitting…");
+      const { error } = await requireDatabase().from("task_submissions").insert({
+        task_id: taskId,
+        user_id: currentUser.id,
+        submission_text: response,
+        status: "submitted"
+      });
+      if (error) throw error;
+      textarea.value = "";
+      notice("Task submitted for review. Any reward remains pending until approval.", "success");
+    } catch (error) {
+      console.error("Task submission error:", error);
+      notice("Could not submit task: " + (error.message || "Please try again."), "error");
+    } finally {
+      setButtonLoading(button, false);
+    }
+  }
+
+  async function loadAdminActivationQueue() {
+    if (!currentUser || currentProfile?.role !== "admin" || currentProfile?.account_status !== "approved") return;
+    const root = $("adminActivationQueue");
+    if (!root) return;
+    setText("adminQueueStatus", "Loading FBK submissions…");
+
+    try {
+      const { data, error } = await requireDatabase()
+        .from("fbk_code_submissions")
+        .select("id,user_id,submitted_code,status,admin_note,created_at,reviewed_at")
+        .order("created_at", { ascending: false })
+        .limit(200);
+      if (error) throw error;
+
+      const rows = data || [];
+      const userIds = [...new Set(rows.map(row => row.user_id).filter(Boolean))];
+      let profiles = [];
+      if (userIds.length) {
+        const result = await requireDatabase()
+          .from("profiles")
+          .select("id,full_name,email,phone,country,account_status,role")
+          .in("id", userIds);
+        if (result.error) throw result.error;
+        profiles = result.data || [];
+      }
+      const profileMap = new Map(profiles.map(profile => [profile.id, profile]));
+      root.replaceChildren();
+
+      if (!rows.length) {
+        root.textContent = "No FBK submissions yet.";
+        setText("adminQueueStatus", "No submissions are waiting.");
+        return;
+      }
+
+      rows.forEach(row => {
+        const profile = profileMap.get(row.user_id) || {};
+        const card = document.createElement("article");
+        card.className = "task-card";
+        const heading = document.createElement("h3");
+        heading.textContent = `${profile.full_name || "Member"} — ${row.status || "submitted"}`;
+        const details = document.createElement("p");
+        details.textContent = `Phone: ${profile.phone || "—"} · Email: ${profile.email || "—"} · Country: ${profile.country || "—"}`;
+        const code = document.createElement("p");
+        code.textContent = "FBK number: " + (row.submitted_code || "—");
+        const date = document.createElement("p");
+        date.textContent = "Submitted: " + (row.created_at ? new Date(row.created_at).toLocaleString() : "—");
+        const note = document.createElement("p");
+        note.textContent = "Admin note: " + (row.admin_note || "—");
+        card.append(heading, details, code, date, note);
+
+        if (row.status === "submitted" || row.status === "reviewed") {
+          const actions = document.createElement("div");
+          actions.className = "sb-admin-actions";
+          const approve = document.createElement("button");
+          approve.type = "button";
+          approve.className = "primary";
+          approve.textContent = "Approve account";
+          approve.addEventListener("click", () => reviewFbkSubmission(row, "approved", profile, approve));
+          const reject = document.createElement("button");
+          reject.type = "button";
+          reject.className = "secondary";
+          reject.textContent = "Reject / request correction";
+          reject.addEventListener("click", () => reviewFbkSubmission(row, "rejected", profile, reject));
+          actions.append(approve, reject);
+          card.appendChild(actions);
+        }
+        root.appendChild(card);
+      });
+      setText("adminQueueStatus", `${rows.length} FBK submission(s) loaded. Approvals are manual.`);
+    } catch (error) {
+      console.error("Admin FBK queue error:", error);
+      setText("adminQueueStatus", "Could not load FBK submissions. Check admin RLS policies and table columns.");
+    }
+  }
+
+  async function reviewFbkSubmission(row, decision, profile, button) {
+    if (!currentUser || currentProfile?.role !== "admin" || currentProfile?.account_status !== "approved") {
+      return notice("Only an approved administrator can review submissions.", "error");
+    }
+    let adminNote = "";
+    if (decision === "rejected") {
+      adminNote = window.prompt("Reason or instructions for the member (optional):", "") || "";
+    }
+    try {
+      setButtonLoading(button, true, "Saving decision…");
+      const client = requireDatabase();
+      let isUpgradeReview = false;
+      if (row.user_id) {
+        const { data: pendingUpgrade, error: upgradeLookupError } = await client
+          .from("scholarbrige_upgrade_requests")
+          .select("id")
+          .eq("user_id", row.user_id)
+          .eq("status", "awaiting_fbk")
+          .limit(1);
+        if (!upgradeLookupError && pendingUpgrade?.length) isUpgradeReview = true;
+      }
+      const { error: submissionError } = await client
+        .from("fbk_code_submissions")
+        .update({
+          status: decision === "approved" ? "accepted" : "rejected",
+          admin_note: adminNote || null,
+          reviewed_at: new Date().toISOString()
+        })
+        .eq("id", row.id);
+      if (submissionError) throw submissionError;
+
+      if (row.user_id && !isUpgradeReview) {
+        const newStatus = decision === "approved" ? "approved" : "awaiting_activation";
+        const { error: profileError } = await client
+          .from("profiles")
+          .update({ account_status: newStatus })
+          .eq("id", row.user_id);
+        if (profileError) throw profileError;
+      }
+
+      notice(isUpgradeReview
+        ? (decision === "approved" ? "Upgrade FBK submission accepted. The upgrade request has been updated; the member remains approved." : "Upgrade FBK submission rejected. The member remains approved and may submit a corrected code.")
+        : (decision === "approved" ? "Account approved. The member can now sign in to the dashboard." : "Submission rejected. The member can submit a corrected FBK code."), "success");
+      await loadAdminActivationQueue();
+      await loadScholarbrigeAdminPanel();
+    } catch (error) {
+      console.error("FBK review failed:", error);
+      notice("Could not save the decision: " + (error.message || "Check the admin policies and status constraints."), "error");
+    } finally {
+      setButtonLoading(button, false);
+    }
+  }
+
+  async function loadAdminSaleQueue() {
+    if (!currentUser || currentProfile?.role !== "admin" || currentProfile?.account_status !== "approved") return;
+    const root = $("adminSaleQueue");
+    if (!root) return;
+    root.textContent = "Account sale requests may be unavailable if the table has not been configured.";
+    try {
+      const { data, error } = await requireDatabase()
+        .from("account_sale_requests")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(100);
+      if (error) throw error;
+      root.replaceChildren();
+      if (!data?.length) {
+        root.textContent = "No account sale requests.";
+        return;
+      }
+      data.forEach(item => {
+        const card = document.createElement("article");
+        card.className = "task-card";
+        const title = document.createElement("h3");
+        title.textContent = `Account sale request · Level ${item.level ?? item.membership_level ?? "—"}`;
+        const details = document.createElement("p");
+        details.textContent = `Status: ${item.status || "submitted"} · Price: ${formatMoney(item.price ?? item.sale_price ?? 0)}`;
+        card.append(title, details);
+        root.appendChild(card);
+      });
+    } catch (error) {
+      console.warn("Sale queue unavailable:", error.message);
+      root.textContent = "Sale requests could not load. Confirm the account_sale_requests columns and admin read policy.";
+    }
+  }
+
+  async function loadAdminTaskSubmissions() {
+    if (!currentUser || currentProfile?.role !== "admin" || currentProfile?.account_status !== "approved") return;
+    const root = $("adminTaskList");
+    if (!root) return;
+    try {
+      const { data, error } = await requireDatabase()
+        .from("task_submissions")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(100);
+      if (error) throw error;
+      root.replaceChildren();
+      if (!data?.length) {
+        root.textContent = "No task submissions yet.";
+        return;
+      }
+      data.forEach(item => {
+        const card = document.createElement("article");
+        card.className = "task-card";
+        const title = document.createElement("h3");
+        title.textContent = `Task submission · ${item.status || "submitted"}`;
+        const details = document.createElement("p");
+        details.textContent = String(item.submission_text || item.answer_text || item.content || "No text response provided");
+        card.append(title, details);
+        root.appendChild(card);
+      });
+    } catch (error) {
+      console.warn("Task submissions unavailable:", error.message);
+      root.textContent = "Task submissions could not load. Check task_submissions columns and admin RLS policies.";
+    }
+  }
+
+  // Public Hall of Fame: reads only rows allowed by Supabase RLS.
+  async function loadPublicHallOfFame() {
+    const publicRoot = $("publicHallOfFame");
+    if (!publicRoot || !db) return;
+    try {
+      const client = requireDatabase();
+      const [postsResult, scholarsResult] = await Promise.all([
+        client.from("scholarbrige_leaderposts")
+          .select("id,title,message,created_at")
+          .eq("is_published", true)
+          .order("created_at", { ascending: false }).limit(10),
+        client.from("scholarbrige_scholar_spotlights")
+          .select("id,display_name,achievement,verified_earnings,currency,is_featured,created_at")
+          .eq("is_published", true).eq("consent_confirmed", true)
+          .order("is_featured", { ascending: false })
+          .order("verified_earnings", { ascending: false }).limit(50)
+      ]);
+      if (postsResult.error) throw postsResult.error;
+      if (scholarsResult.error) throw scholarsResult.error;
+      const posts = postsResult.data || [];
+      const scholars = scholarsResult.data || [];
+      const latest = posts[0];
+      setText("leaderpostTitle", latest?.title || "Scholarbrige Community Highlights");
+      setText("leaderpostText", latest?.message || "Our community achievements will appear here when published by an administrator.");
+      setText("leaderpostDate", latest?.created_at ? new Date(latest.created_at).toLocaleDateString() : "");
+      const featured = scholars.find(row => row.is_featured) || scholars[0];
+      setText("hallFeaturedName", featured?.display_name || "Featured Scholar");
+      setText("hallFeaturedAchievement", featured?.achievement || "A scholar achievement will appear here when approved for public display.");
+      setText("hallFeaturedEarnings", featured ? `${featured.currency || "KES"} ${Number(featured.verified_earnings || 0).toLocaleString("en-KE", {maximumFractionDigits:2})}` : "Earnings shown only for published, consented records");
+      const list = $("publicScholarList");
+      if (list) {
+        list.replaceChildren();
+        if (!scholars.length) {
+          list.textContent = "No scholars have been featured publicly yet.";
+        } else {
+          scholars.forEach((scholar, index) => {
+            const card = document.createElement("article");
+            card.className = "hall-scholar-card";
+            const title = document.createElement("h3");
+            title.textContent = `${index + 1}. ${scholar.display_name}`;
+            const achievement = document.createElement("p");
+            achievement.textContent = scholar.achievement;
+            const earnings = document.createElement("p");
+            earnings.textContent = `Reported verified earnings: ${scholar.currency || "KES"} ${Number(scholar.verified_earnings || 0).toLocaleString("en-KE", {maximumFractionDigits:2})}`;
+            card.append(title, achievement, earnings);
+            list.appendChild(card);
+          });
+        }
+      }
+    } catch (error) {
+      console.warn("Public Hall of Fame could not load:", error);
+      const list = $("publicScholarList");
+      if (list) list.textContent = "The Hall of Fame is temporarily unavailable. Please try again later.";
+    }
+  }
+
+  function bindHallOfFameAdmin() {
+    const postForm = $("hallLeaderpostForm");
+    const scholarForm = $("hallScholarForm");
+    if (!postForm || postForm.dataset.bound === "true") return;
+    postForm.dataset.bound = "true";
+    scholarForm.dataset.bound = "true";
+    postForm.addEventListener("submit", saveHallLeaderpost);
+    scholarForm.addEventListener("submit", saveHallScholar);
+    $("hallPostReset")?.addEventListener("click", () => {
+      postForm.reset(); $("hallPostId").value = ""; setText("hallPostStatus", "");
+    });
+    $("hallScholarReset")?.addEventListener("click", () => {
+      scholarForm.reset(); $("hallScholarId").value = ""; $("hallScholarEarnings").value = "0"; setText("hallScholarStatus", "");
+    });
+  }
+
+  async function loadHallOfFameAdmin() {
+    if (!currentUser || currentProfile?.role !== "admin" || currentProfile?.account_status !== "approved") return;
+    const client = requireDatabase();
+    const postRoot = $("hallPostAdminList");
+    const scholarRoot = $("hallScholarAdminList");
+    if (!postRoot || !scholarRoot) return;
+    postRoot.textContent = "Loading announcements…";
+    scholarRoot.textContent = "Loading scholars…";
+    try {
+      const [postsResult, scholarsResult] = await Promise.all([
+        client.from("scholarbrige_leaderposts").select("id,title,message,is_published,created_at").order("created_at", {ascending:false}).limit(100),
+        client.from("scholarbrige_scholar_spotlights").select("id,display_name,achievement,verified_earnings,currency,is_featured,is_published,consent_confirmed,created_at").order("created_at", {ascending:false}).limit(100)
+      ]);
+      if (postsResult.error) throw postsResult.error;
+      if (scholarsResult.error) throw scholarsResult.error;
+      postRoot.replaceChildren(); scholarRoot.replaceChildren();
+      if (!postsResult.data?.length) postRoot.textContent = "No announcements yet. Use the form above to add one.";
+      (postsResult.data || []).forEach(row => {
+        const card = document.createElement("article"); card.className = "task-card";
+        const h = document.createElement("h4"); h.textContent = `${row.title} · ${row.is_published ? "Published" : "Draft"}`;
+        const p = document.createElement("p"); p.textContent = row.message;
+        const actions = document.createElement("div"); actions.className = "sb-admin-actions";
+        const edit = document.createElement("button"); edit.type = "button"; edit.textContent = "Edit";
+        edit.addEventListener("click", () => { $("hallPostId").value=row.id; $("hallPostTitle").value=row.title; $("hallPostMessage").value=row.message; $("hallPostPublished").checked=!!row.is_published; $("hallPostTitle").focus(); });
+        const del = document.createElement("button"); del.type="button"; del.textContent="Delete";
+        del.addEventListener("click", async () => { if (!window.confirm("Delete this announcement?")) return; const {error}=await requireDatabase().from("scholarbrige_leaderposts").delete().eq("id",row.id); if(error){setText("hallPostStatus","Delete failed: "+error.message);return;} await loadHallOfFameAdmin(); await loadPublicHallOfFame(); });
+        actions.append(edit,del); card.append(h,p,actions); postRoot.appendChild(card);
+      });
+      if (!scholarsResult.data?.length) scholarRoot.textContent = "No scholars yet. Add a scholar above when the achievement and earnings are verified.";
+      (scholarsResult.data || []).forEach(row => {
+        const card=document.createElement("article"); card.className="task-card";
+        const h=document.createElement("h4"); h.textContent=`${row.display_name}${row.is_featured ? " · Featured" : ""}`;
+        const p=document.createElement("p"); p.textContent=`${row.achievement} · ${row.currency || "KES"} ${Number(row.verified_earnings||0).toLocaleString("en-KE")} · ${row.is_published ? "Published" : "Draft"} · Consent: ${row.consent_confirmed ? "confirmed" : "not confirmed"}`;
+        const actions=document.createElement("div"); actions.className="sb-admin-actions";
+        const edit=document.createElement("button"); edit.type="button"; edit.textContent="Edit";
+        edit.addEventListener("click",()=>{ $("hallScholarId").value=row.id; $("hallScholarName").value=row.display_name; $("hallScholarAchievement").value=row.achievement; $("hallScholarEarnings").value=row.verified_earnings; $("hallScholarConsent").checked=!!row.consent_confirmed; $("hallScholarFeatured").checked=!!row.is_featured; $("hallScholarPublished").checked=!!row.is_published; $("hallScholarName").focus(); });
+        const del=document.createElement("button"); del.type="button"; del.textContent="Delete";
+        del.addEventListener("click",async()=>{if(!window.confirm("Delete this scholar entry?"))return;const {error}=await requireDatabase().from("scholarbrige_scholar_spotlights").delete().eq("id",row.id);if(error){setText("hallScholarStatus","Delete failed: "+error.message);return;}await loadHallOfFameAdmin();await loadPublicHallOfFame();});
+        actions.append(edit,del); card.append(h,p,actions); scholarRoot.appendChild(card);
+      });
+    } catch(error) {
+      console.error("Hall of Fame admin load error:",error);
+      setText("hallPostStatus","Could not load entries: "+(error.message||"Check table permissions."));
+      setText("hallScholarStatus","Could not load entries. Check that the Hall of Fame SQL ran successfully and the current user is an approved admin.");
+           }
