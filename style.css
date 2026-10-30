@@ -3,4 +3,432 @@
 
 
 /* Scholarbrige member tools */
-.profile-tools{display:flex;align-items:center;gap:18px;flex-wrap:wrap}.profile-avatar-wrap{display:grid;justify-items:center;gap:8px}.member-avatar{width:92px;height:92px;object-fit:cover;border-radius:50%;border:3px solid #dce9d3;box-shadow:0 8px 24px #173b2314}.upload-label{min-height:36px;padding:9px 12px;cursor:pointer}.profile-meta{display:grid;gap:8px;min-width:0}.profile-meta b{font:800 18px Manrope}.profile-meta span{color:#527044;font-size:12px;font-weight:700}.profile-meta small{color:#87938a;font-size:11px;line-height:1.6}.upgrade-current{padding:12px;border-radius:12px;background:#eff6e8;color:#3f6935;font-size:12px;font-weight:800}.member-search-results,.chat-messages,.history-list{display:grid;gap:9px;margin-top:12px}.member-result{display:flex;align-items:center;gap:11px;padding:11px;border:1px solid #e1e9dc;border-radius:13px;background:#fbfcfa}.member-result img{width:40px;height:40px;object-fit:cover;border-radius:50%;background:#e9f7d1}.member-result-info{flex:1;min-width:0}.member-result-info b,.member-result-info small{display:block;overflow-wrap:anywhere}.member-result-info b{font-size:12px}.member-result-info small{font-size:10px;color:#87938a;margin-top:4px}.member-result button{padding:9px 11px;font-size:10px}.chat-messages{max-height:340px;overflow:auto;padding:8px;background:#f6f9f3;border-radius:13px}.chat-message{max-width:88%;padding:10px 12px;border-radius:13px;background:#fff;border:1px solid #e0e9dc;justify-self:start;overflow-wrap:anywhere}.chat-message.mine{justify-self:end;background:#e9f7d1;border-color:#d3e8c3}.chat-message p{margin:0;font-size:12px;line-height:1.6;white-space:pre-wrap}.chat-message time{display:block;margin-top:6px;font-size:9px;color:#7d8a80}.chat-compose{display:grid;gap:9px;margin-top:12px}.chat-compose textarea{width:100%;padding:12px;border:1px solid #dfe7dc;border-radius:12px;resize:vertical}.history-item{display:flex;justify-content:space-between;gap:10px;align-items:center}.history-item small{color:#87938a}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}.hall-of-fame{margin:0 0 35px;padding:clamp(22px,4vw,42px);border:1px solid rgba(192,164,104,.28);border-radius:26px;background:linear-gradient(145deg,#092e25,#104536 58%,#09291f);color:#f6f3e9;box-shadow:0 22px 55px rgba(5,35,26,.18);overflow:hidden;position:relative}.hall-of-fame:before{content:"S+";position:absolute;right:-14px;top:35px;font-size:clamp(100px,22vw,230px);line-height:1;font-weight:800;color:rgba(255,255,255,.035);pointer-events:none}.hall-heading,.hall-feature,.hall-stats,.hall-leaderboard,.hall-disclaimer{position:relative;z-index:1}.hall-heading{max-width:690px;margin-bottom:27px}.hall-heading h2{margin:12px 0;font-size:clamp(27px,5vw,43px);line-height:1.13;letter-spacing:-.8px}.hall-heading h2 em{color:#e4c580;font-family:Georgia,serif;font-weight:400}.hall-heading p,.hall-feature-copy p{color:#d2e1d9;line-height:1.75}.hall-feature{display:flex;align-items:flex-start;gap:18px;padding:23px;border:1px solid rgba(226,198,132,.3);border-radius:18px;background:rgba(255,255,255,.055)}.hall-feature-icon{display:grid;place-items:center;flex:0 0 48px;width:48px;height:48px;border-radius:14px;backg
+.profile-tools{display:flex;align-items:center;gap:18px;flex-wrap:wrap}.profile-avatar-wrap{display:grid;justify-items:center;gap:8px}.member-avatar{width:92px;height:92px;object-fit:cover;border-radius:50%;border:3px solid #dce9d3;box-shadow:0 8px 24px #173b2314}.upload-label{min-height:36px;padding:9px 12px;cursor:pointer}.profile-meta{display:grid;gap:8px;min-width:0}.profile-meta b{font:800 18px Manrope}.profile-meta span{color:#527044;font-size:12px;font-weight:700}.profile-meta small{color:#87938a;font-size:11px;line-height:1.6}.upgrade-current{padding:12px;border-radius:12px;background:#eff6e8;color:#3f6935;font-size:12px;font-weight:800}.member-search-results,.chat-messages,.history-list{display:grid;gap:9px;margin-top:12px}.member-result{display:flex;align-items:center;gap:11px;padding:11px;border:1px solid #e1e9dc;border-radius:13px;background:#fbfcfa}.member-result img{width:40px;height:40px;object-fit:cover;border-radius:50%;background:#e9f7d1}.member-result-info{flex:1;min-width:0}.member-result-info b,.member-result-info small{display:block;overflow-wrap:anywhere}.member-result-info b{font-size:12px}.member-result-info small{font-size:10px;color:#87938a;margin-top:4px}.member-result button{padding:9px 11px;font-size:10px}.chat-messages{max-height:340px;overflow:auto;padding:8px;background:#f6f9f3;border-radius:13px}.chat-message{max-width:88%;padding:10px 12px;border-radius:13px;background:#fff;border:1px solid #e0e9dc;justify-self:start;overflow-wrap:anywhere}.chat-message.mine{justify-self:end;background:#e9f7d1;border-color:#d3e8c3}.chat-message p{margin:0;font-size:12px;line-height:1.6;white-space:pre-wrap}.chat-message time{display:block;margin-top:6px;font-size:9px;color:#7d8a80}.chat-compose{display:grid;gap:9px;margin-top:12px}.chat-compose textarea{width:100%;padding:12px;border:1px solid #dfe7dc;border-radius:12px;resize:vertical}.history-item{display:flex;justify-content:space-between;gap:10px;align-items:center}.history-item small{color:#87938a}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}.hall-of-fame{margin:0 0 35px;padding:clamp(22px,4vw,42px);border:1px solid rgba(192,164,104,.28);border-radius:26px;background:linear-gradient(145deg,#092e25,#104536 58%,#09291f);color:#f6f3e9;box-shadow:0 22px 55px rgba(5,35,26,.18);overflow:hidden;position:relative}.hall-of-fame:before{content:"S+";position:absolute;right:-14px;top:35px;font-size:clamp(100px,22vw,230px);line-height:1;font-weight:800;color:rgba(255,255,255,.035);pointer-events:none}.hall-heading,.hall-feature,.hall-stats,.hall-leaderboard,.hall-disclaimer{position:relative;z-index:1}.hall-heading{max-width:690px;margin-bottom:27px}.hall-heading h2{margin:12px 0;font-size:clamp(27px,5vw,43px);line-height:1.13;letter-spacing:-.8px}.hall-heading h2 em{color:#e4c580;font-family:Georgia,serif;font-weight:400}.hall-heading p,.hall-feature-copy p{color:#d2e1d9;line-height:1.75}.hall-feature{display:flex;align-items:flex-start;gap:18px;padding:23px;border:1px solid rgba(226,198,132,.3);border-radius:18px;background:rgba(255,255,255,.055)}.hall-feature-icon{display:grid;place-items:center;flex:0 0 48px;width:48px;height:48px;border-radius:14px;background:rgba(226,198,132,.14);color:#e4c580;font-size:25px}.hall-label,.hall-stats article>small{color:#e4c580;font-size:10px;font-weight:800;letter-spacing:1.5px}.hall-feature-copy h3{margin:9px 0;font-size:clamp(19px,3vw,26px)}.hall-feature-copy p{margin:0 0 13px;font-size:14px}.hall-feature-copy>small{color:#afc7ba;font-size:10px}.hall-stats{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:14px 0}.hall-stats article,.hall-leaderboard{padding:20px;border:1px solid rgba(226,198,132,.2);border-radius:17px;background:rgba(255,255,255,.045)}.hall-stats h3{font-size:20px;overflow-wrap:anywhere}.hall-stats p{color:#c3d7cc;font-size:12px;line-height:1.6}.hall-leaderboard-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:15px}.hall-leaderboard-heading h3{margin:8px 0;font:800 20px Manrope}.hall-live{font-size:9px;letter-spacing:1px;color:#e4c580}.hall-live i{display:inline-block;width:7px;height:7px;border-radius:50%;background:#c9f36a;margin-right:6px}.public-scholar-list{display:grid;gap:9px}.hall-scholar-card,.hall-scholar{display:flex;align-items:center;gap:13px;padding:14px;border-radius:13px;background:rgba(255,255,255,.055)}.hall-scholar-card{display:block}.hall-scholar-card h3{margin:0 0 7px;color:#fff;font-size:14px}.hall-scholar-card p{margin:5px 0;color:#c3d7cc;font-size:12px;line-height:1.6}.hall-empty{padding:15px;color:#c3d7cc;font-size:12px}.hall-disclaimer{margin:18px 0 0;color:#afc7ba;font-size:11px;line-height:1.7}
+@media(max-width:600px){.hall-feature{padding:17px;gap:12px}.hall-feature-icon{flex-basis:38px;width:38px;height:38px}.hall-stats article,.hall-leaderboard{padding:15px}.hall-leaderboard-heading{align-items:flex-start}.hall-live{font-size:8px}.profile-tools{align-items:flex-start}.member-result{align-items:flex-start}.member-result button{white-space:nowrap}.hall-stats{grid-template-columns:1fr}.chat-message{max-width:96%}}
+
+
+/* Scholarbrige cross-device themes and night/day ambience */
+.celestial-mark{display:grid;place-items:center;width:36px;height:36px;border:1px solid #d5e1cf;border-radius:50%;background:#fff;color:#8e9d43;font-size:19px;box-shadow:0 5px 18px #102b1c0d}
+body[data-timephase="night"]{background:#0b1715;color:#e8f0e9}
+body[data-timephase="night"] .ambient-one{background:#254e48;opacity:.55}
+body[data-timephase="night"] .ambient-two{background:#1b3a35;opacity:.65}
+body[data-timephase="night"] .topbar{border-color:#29423a}
+body[data-timephase="night"] .brand-copy strong,body[data-timephase="night"] .hero-column h1,body[data-timephase="night"] .auth-card-top h2,body[data-timephase="night"] .dash-top h1{color:#edf5ed}
+body[data-timephase="night"] .hero-copy,body[data-timephase="night"] .hero-points small,body[data-timephase="night"] .hero-bottom,body[data-timephase="night"] .secure-label{color:#a8bdb0}
+body[data-timephase="night"] .auth-card,body[data-timephase="night"] .state-card,body[data-timephase="night"] .content-card,body[data-timephase="night"] .metric{background:#142722;border-color:#29463a;color:#e8f0e9;box-shadow:0 18px 45px #00000024}
+body[data-timephase="night"] .form label,body[data-timephase="night"] .ref-label,body[data-timephase="night"] .card-heading h2,body[data-timephase="night"] .metric>strong,body[data-timephase="night"] .profile-meta b{color:#e6f1e7}
+body[data-timephase="night"] .form input,body[data-timephase="night"] .form select,body[data-timephase="night"] .ref-label input,body[data-timephase="night"] .chat-compose textarea{background:#0d1d19;color:#edf5ed;border-color:#355448}
+body[data-timephase="night"] .secondary,body[data-timephase="night"] .action{background:#19332a;border-color:#355448;color:#e0efe3}
+body[data-timephase="night"] .tabs{background:#0d1d19}
+body[data-timephase="night"] .tab.active{background:#244637;color:#f2f8ed}
+body[data-timephase="night"] .quote-card,body[data-timephase="night"] .feed-empty,body[data-timephase="night"] .chat-messages{background:#192f27;border-color:#345345;color:#c7d8cc}
+body[data-timephase="night"] .site-footer{border-color:#29423a;color:#a6b9ac}
+body[data-timephase="night"] .metric-bottom{border-color:#29463a;color:#b1c4b7}
+html[data-theme="sky-blue"]{--forest:#174c79;--forest2:#1d6095;--mint:#aee8ff;--mint-soft:#e0f4ff;--paper:#f1f8fc}
+html[data-theme="lavender"]{--forest:#49386f;--forest2:#5b478a;--mint:#e3d2ff;--mint-soft:#f1eaff;--paper:#f7f4fc}
+html[data-theme="rose-pink"]{--forest:#783d55;--forest2:#914a67;--mint:#ffd2e3;--mint-soft:#fff0f5;--paper:#fff5f8}
+html[data-theme="forest-green"]{--forest:#073b2b;--forest2:#0b4a35;--mint:#c9f36a;--mint-soft:#e9f7d1;--paper:#f6f8f2}
+html[data-theme="light-mode"]{--forest:#253d34;--forest2:#36574a;--mint:#d4e8c4;--mint-soft:#edf5e7;--paper:#ffffff}
+body[data-timephase="night"]:before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;background-image:radial-gradient(1px 1px at 10% 20%,#ffffffb8 99%,transparent),radial-gradient(1px 1px at 70% 13%,#ffffffa8 99%,transparent),radial-gradient(1.5px 1.5px at 42% 37%,#ffffff8c 99%,transparent),radial-gradient(1px 1px at 84% 58%,#ffffffa8 99%,transparent),radial-gradient(1px 1px at 23% 78%,#ffffffa8 99%,transparent),radial-gradient(1px 1px at 62% 87%,#ffffffa8 99%,transparent);background-size:360px 300px;opacity:.7}
+.country-flag-strip{overflow:hidden;border-top:1px solid #dce7d8;border-bottom:1px solid #dce7d8;padding:12px 0;margin-top:25px;background:#ffffff80}
+.flag-strip-track{display:flex;align-items:center;gap:32px;width:max-content;animation:scholarFlags 28s linear infinite;white-space:nowrap;color:#55705b;font-size:11px;font-weight:800}
+.flag-strip-track span{display:inline-flex;align-items:center;gap:8px}
+.country-flag-strip:hover .flag-strip-track{animation-play-state:paused}
+@keyframes scholarFlags{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+body[data-timephase="night"] .country-flag-strip{background:#10221d;border-color:#29463a}
+body[data-timephase="night"] .flag-strip-track{color:#c4d8c9}
+@media(prefers-reduced-motion:reduce){.flag-strip-track{animation:none}}
+
+/* Clarifies that wallet amounts are converted for display only. */
+.wallet-currency-note { display: block; margin-top: 5px; opacity: .78; font-size: .75rem; line-height: 1.4; }
+
+
+/* ================================================================
+   SCHOLARBRIGE ROYAL NAVY & GOLD — DASHBOARD-ONLY THEME
+   All selectors are scoped to #dashboardView so login, signup,
+   activation, waiting and support screens keep their existing look.
+   ================================================================ */
+#dashboardView {
+  --dash-navy: #101d3b;
+  --dash-navy-deep: #09142b;
+  --dash-navy-soft: #1b2b50;
+  --dash-gold: #c8a65a;
+  --dash-gold-bright: #e4c779;
+  --dash-ivory: #fbf8f0;
+  --dash-paper: #fffdf8;
+  --dash-ink: #202b40;
+  --dash-muted: #6d7481;
+  --dash-line: #e8e0cf;
+  position: relative;
+  isolation: isolate;
+  color: var(--dash-ink);
+  padding: clamp(14px, 3vw, 34px);
+  margin: 0 auto 28px;
+  max-width: 1240px;
+  border: 1px solid rgba(200, 166, 90, .32);
+  border-radius: 24px;
+  background:
+    radial-gradient(ellipse at 90% 0%, rgba(200,166,90,.13), transparent 32%),
+    linear-gradient(145deg, #fffdf8 0%, #f6f1e6 100%);
+  box-shadow: 0 22px 60px rgba(8, 20, 43, .16), inset 0 1px 0 rgba(255,255,255,.9);
+  animation: scholarbrigeDashboardEnter .55s ease both;
+}
+#dashboardView::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: .28;
+  background-image: radial-gradient(rgba(16,29,59,.13) .55px, transparent .55px);
+  background-size: 13px 13px;
+  mask-image: linear-gradient(to bottom right, black, transparent 70%);
+}
+#dashboardView .dashboard-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: clamp(22px, 4vw, 38px);
+  margin: 0 0 22px;
+  color: #fffaf0;
+  border: 1px solid rgba(228,199,121,.52);
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at 82% 15%, rgba(228,199,121,.20), transparent 29%),
+    linear-gradient(120deg, var(--dash-navy-deep), var(--dash-navy) 60%, #26385e);
+  box-shadow: 0 13px 30px rgba(9,20,43,.2), inset 0 1px 0 rgba(255,255,255,.08);
+  position: relative;
+  overflow: hidden;
+}
+#dashboardView .dashboard-heading::after {
+  content: "";
+  position: absolute;
+  width: 210px;
+  height: 210px;
+  right: -68px;
+  bottom: -138px;
+  border: 1px solid rgba(228,199,121,.34);
+  border-radius: 50%;
+  box-shadow: 0 0 0 18px rgba(228,199,121,.035), 0 0 0 38px rgba(228,199,121,.025);
+  pointer-events: none;
+}
+#dashboardView .dashboard-heading .eyebrow {
+  color: var(--dash-gold-bright);
+  letter-spacing: .19em;
+  font-weight: 800;
+}
+#dashboardView .dashboard-heading h1 {
+  color: #fffaf0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-weight: 600;
+  letter-spacing: -.035em;
+  line-height: 1.12;
+  margin: 8px 0 10px;
+  font-size: clamp(1.8rem, 4vw, 2.65rem);
+}
+#dashboardView .dashboard-heading p:not(.eyebrow) {
+  color: rgba(255,250,240,.76);
+  margin-bottom: 0;
+}
+#dashboardView .dashboard-heading #logoutDashboard {
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+  color: #fff8e8;
+  border-color: rgba(228,199,121,.65);
+  background: rgba(255,255,255,.055);
+}
+#dashboardView .dashboard-heading #logoutDashboard:hover {
+  background: rgba(228,199,121,.15);
+  border-color: var(--dash-gold-bright);
+}
+#dashboardView .metrics-grid {
+  gap: 18px;
+  margin-bottom: 22px;
+}
+#dashboardView .panel.metric-card,
+#dashboardView .dash-columns > .panel,
+#dashboardView > .panel {
+  border: 1px solid var(--dash-line);
+  border-radius: 17px;
+  background: rgba(255,253,248,.94);
+  box-shadow: 0 8px 24px rgba(16,29,59,.055), inset 0 1px 0 #fff;
+  transition: transform .22s ease, box-shadow .22s ease, border-color .22s ease;
+}
+#dashboardView .panel.metric-card:hover,
+#dashboardView .dash-columns > .panel:hover {
+  transform: translateY(-2px);
+  border-color: rgba(200,166,90,.65);
+  box-shadow: 0 13px 28px rgba(16,29,59,.09);
+}
+#dashboardView .metric-card {
+  position: relative;
+  overflow: hidden;
+  padding: 24px;
+}
+#dashboardView .metric-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: linear-gradient(180deg, var(--dash-gold-bright), #a78034);
+}
+#dashboardView .metric-card > span {
+  color: var(--dash-muted);
+  font-weight: 650;
+  letter-spacing: .015em;
+}
+#dashboardView .metric-card strong {
+  display: block;
+  margin: 12px 0 7px;
+  color: var(--dash-navy);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(1.8rem, 4vw, 2.45rem);
+  font-weight: 700;
+  letter-spacing: -.025em;
+  overflow-wrap: anywhere;
+}
+#dashboardView .metric-card small {
+  color: #81818a;
+}
+#dashboardView .dash-columns {
+  gap: 20px;
+  align-items: stretch;
+}
+#dashboardView .dash-columns > .panel,
+#dashboardView > section.panel {
+  padding: clamp(18px, 3vw, 26px);
+  margin-top: 20px;
+}
+#dashboardView .panel-head {
+  gap: 12px;
+  margin-bottom: 16px;
+  padding-bottom: 13px;
+  border-bottom: 1px solid #eee6d6;
+}
+#dashboardView .panel-head h2,
+#dashboardView > section.panel h2,
+#dashboardView .dash-columns h2 {
+  color: var(--dash-navy);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(1.2rem, 2.5vw, 1.55rem);
+  font-weight: 700;
+  letter-spacing: -.015em;
+}
+#dashboardView .icon-chip {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  color: #8b6928;
+  border: 1px solid rgba(200,166,90,.52);
+  border-radius: 12px;
+  background: #f7efd9;
+}
+#dashboardView .dash-columns p,
+#dashboardView .feed-empty,
+#dashboardView .small-note {
+  color: var(--dash-muted);
+  line-height: 1.7;
+}
+#dashboardView .feed-empty {
+  padding: 16px;
+  border: 1px dashed #d8c89f;
+  border-radius: 12px;
+  background: #fcf8ed;
+}
+#dashboardView .action-list {
+  gap: 10px;
+}
+#dashboardView .action {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  width: 100%;
+  padding: 14px;
+  text-align: left;
+  color: var(--dash-ink);
+  border: 1px solid #e9e1d1;
+  border-radius: 13px;
+  background: #fffdf8;
+  transition: border-color .2s ease, background .2s ease, transform .2s ease;
+}
+#dashboardView .action:hover {
+  transform: translateY(-1px);
+  border-color: var(--dash-gold);
+  background: #fbf5e7;
+}
+#dashboardView .action > span {
+  display: grid;
+  place-items: center;
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+  color: #fff8e7;
+  border-radius: 12px;
+  background: var(--dash-navy);
+  font-size: 1.1rem;
+}
+#dashboardView .action strong {
+  display: block;
+  color: var(--dash-navy);
+  font-weight: 750;
+}
+#dashboardView .action small {
+  display: block;
+  margin-top: 3px;
+  color: var(--dash-muted);
+}
+#dashboardView label {
+  color: var(--dash-navy);
+  font-weight: 650;
+}
+#dashboardView input:not([type="checkbox"]),
+#dashboardView select,
+#dashboardView textarea {
+  color: #202b40;
+  border-color: #ded5c2;
+  border-radius: 11px;
+  background: #fffefa;
+}
+#dashboardView input:focus,
+#dashboardView select:focus,
+#dashboardView textarea:focus {
+  outline: 3px solid rgba(200,166,90,.2);
+  border-color: #b9974d;
+}
+#dashboardView button.primary,
+#dashboardView .primary:not(a) {
+  color: #fffaf0;
+  border-color: var(--dash-navy);
+  background: linear-gradient(135deg, #17284c, #0b1732);
+  box-shadow: 0 5px 13px rgba(9,20,43,.15);
+}
+#dashboardView button.primary:hover,
+#dashboardView .primary:not(a):hover {
+  background: linear-gradient(135deg, #253960, #132346);
+  box-shadow: 0 8px 18px rgba(9,20,43,.2);
+}
+#dashboardView button.secondary,
+#dashboardView .secondary {
+  color: var(--dash-navy);
+  border: 1px solid #d7c28d;
+  background: #fffaf0;
+}
+#dashboardView button.secondary:hover,
+#dashboardView .secondary:hover {
+  border-color: var(--dash-gold);
+  background: #f7efd9;
+}
+#dashboardView button,
+#dashboardView a,
+#dashboardView input,
+#dashboardView select,
+#dashboardView textarea {
+  transition: color .2s ease, background-color .2s ease, border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+}
+#dashboardView #adminActivationQueue,
+#dashboardView #adminSaleQueue {
+  display: grid;
+  gap: 12px;
+}
+#dashboardView #adminActivationQueue > *,
+#dashboardView #adminSaleQueue > * {
+  padding: 15px;
+  border: 1px solid var(--dash-line);
+  border-radius: 12px;
+  background: #fffdf8;
+}
+#dashboardView .notice,
+#dashboardView [role="status"]:not(.eyebrow) {
+  border-radius: 11px;
+}
+#dashboardView .small-note {
+  margin-top: 18px;
+  font-size: .88rem;
+}
+@keyframes scholarbrigeDashboardEnter {
+  from { opacity: 0; transform: translateY(7px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (max-width: 700px) {
+  #dashboardView {
+    padding: 12px;
+    border-radius: 17px;
+  }
+  #dashboardView .dashboard-heading {
+    align-items: flex-start;
+    padding: 22px 18px;
+    border-radius: 16px;
+  }
+  #dashboardView .dashboard-heading #logoutDashboard {
+    padding: 9px 11px;
+    font-size: .86rem;
+  }
+  #dashboardView .metric-card { padding: 20px 18px; }
+  #dashboardView .dash-columns > .panel,
+  #dashboardView > section.panel { padding: 18px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #dashboardView,
+  #dashboardView *,
+  #dashboardView *::before,
+  #dashboardView *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+
+/* Royal Navy & Gold contrast refinements — dashboard only */
+#dashboardView .panel-head h2,
+#dashboardView > section.panel h2,
+#dashboardView .dash-columns h2,
+#dashboardView .profile-meta b,
+#dashboardView .upgrade-current,
+#dashboardView .metric > strong { color: #f3e5bd; }
+#dashboardView .panel-head h2,
+#dashboardView > section.panel h2,
+#dashboardView .dash-columns h2 { text-shadow: 0 1px 0 rgba(0,0,0,.18); }
+#dashboardView .upgrade-current { background: rgba(218,184,103,.13); border: 1px solid rgba(218,184,103,.32); }
+#dashboardView #upgradeFeeText { color: #f4e9c9; line-height: 1.65; }
+#dashboardView [data-organic-only="true"] #upgradeFeeText { font-weight: 800; color: #e9cb82; }
+#dashboardView .dashboard-heading h1, #dashboardView .dashboard-heading .eyebrow { color: #ffe7a0; }
+#dashboardView .dashboard-heading p:not(.eyebrow) { color: #fffaf0; }
+
+
+/* Scholarbrige dashboard refresh — Royal Navy & Gold */
+#dashboardView { color:#f4f0e7; }
+#dashboardView .dash-top { align-items:center; }
+#dashboardView .top-profile { display:flex; align-items:center; gap:13px; margin-left:auto; }
+#dashboardView .top-profile-copy { display:grid; gap:3px; text-align:right; }
+#dashboardView .top-profile-copy b { color:#f3d98e; font-size:.94rem; }
+#dashboardView .top-profile-copy small { color:#c8d0dd; }
+#dashboardView .top-profile-copy .text-button { padding:2px 0; text-align:right; color:#e3c477; }
+#dashboardView .top-avatar-label { width:62px;height:62px;position:relative;display:block;cursor:pointer;border-radius:50%;padding:3px;border:2px solid #d6b35f;background:linear-gradient(135deg,#f5df9d,#9d7836);box-shadow:0 5px 22px #0005; }
+#dashboardView .top-avatar-label .member-avatar { width:100%;height:100%;object-fit:cover;border-radius:50%;animation:scholarAvatarTurn 18s linear infinite; }
+#dashboardView .top-avatar-label span { position:absolute;right:-4px;bottom:-3px;background:#d6b35f;color:#10223d;border-radius:50%;width:21px;height:21px;display:grid;place-items:center;font-weight:900; }
+@keyframes scholarAvatarTurn { to { transform:rotate(360deg); } }
+#dashboardView .wallet-feature { display:grid;grid-template-columns:minmax(0,1.6fr) minmax(190px,.7fr);gap:22px;padding:clamp(20px,3vw,32px);margin:22px 0;border-radius:23px;border:1px solid rgba(225,190,104,.45);background:radial-gradient(circle at 85% 10%,rgba(208,171,85,.22),transparent 32%),linear-gradient(125deg,#0b1b34,#152c4d 62%,#203c5c);box-shadow:0 18px 50px #06132635; }
+#dashboardView .wallet-feature-heading { display:flex;align-items:center;justify-content:space-between;gap:10px;color:#e8d39b;font-size:.75rem;font-weight:800;letter-spacing:.13em; }
+#dashboardView .wallet-live-dot { font-size:.65rem;color:#a9d8b6;letter-spacing:.06em; }
+#dashboardView #walletHeadline { display:block;margin:13px 0 3px;font-size:clamp(2rem,5vw,3.7rem);font-weight:900;letter-spacing:-.045em;background:linear-gradient(90deg,#fff1b7,#d8ae4e,#fff6d5,#d9b45e);background-size:250% auto;color:transparent;background-clip:text;-webkit-background-clip:text;animation:walletGoldFlow 5s linear infinite; }
+@keyframes walletGoldFlow { to { background-position:250% center; } }
+#dashboardView .wallet-feature-main>p { color:#c9d2df;font-size:.83rem;margin:0 0 20px; }
+#dashboardView .wallet-subvalues { display:flex;flex-wrap:wrap;gap:22px;border-top:1px solid #ffffff22;padding-top:15px; }
+#dashboardView .wallet-subvalues div { display:grid;gap:5px; }
+#dashboardView .wallet-subvalues small { color:#c5cede;font-size:.7rem; }
+#dashboardView .wallet-subvalues b { color:#f5e5b7;font-size:.92rem; }
+#dashboardView .wallet-feature-side { display:flex;flex-direction:column;gap:10px;justify-content:center; }
+#dashboardView .bonus-button { min-height:145px;border:1px solid #f1d68b;border-radius:17px;background:linear-gradient(145deg,#f4df9e,#c79d4d);color:#18243a;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:pointer;box-shadow:0 9px 24px #0003;transition:transform .2s,box-shadow .2s; }
+#dashboardView .bonus-button:hover { transform:translateY(-3px);box-shadow:0 14px 30px #0004; }
+#dashboardView .bonus-button>span { font-size:1.35rem; }
+#dashboardView .bonus-button strong { font-size:1.5rem; }
+#dashboardView .bonus-button small { color:#5c4a26; }
+#dashboardView .wallet-withdraw-button,#dashboardView .wallet-service-button { border:1px solid #d4b66e;border-radius:11px;padding:12px 15px;background:#ffffff0d;color:#f5e7bd;font-weight:800;text-align:left;cursor:pointer; }
+#dashboardView .wallet-withdraw-button { background:#d7b665;color:#17243a; }
+
