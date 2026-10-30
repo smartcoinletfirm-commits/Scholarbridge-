@@ -1070,3 +1070,283 @@ async function loadTasks() {
       if (list) list.textContent = "The Hall of Fame is temporarily unavailable. Please try again later.";
     }
     }
+function bindHallOfFameAdmin() {
+    const postForm = $("hallLeaderpostForm");
+    const scholarForm = $("hallScholarForm");
+    if (!postForm || postForm.dataset.bound === "true") return;
+    postForm.dataset.bound = "true";
+    scholarForm.dataset.bound = "true";
+    postForm.addEventListener("submit", saveHallLeaderpost);
+    scholarForm.addEventListener("submit", saveHallScholar);
+    $("hallPostReset")?.addEventListener("click", () => {
+      postForm.reset(); $("hallPostId").value = ""; setText("hallPostStatus", "");
+    });
+    $("hallScholarReset")?.addEventListener("click", () => {
+      scholarForm.reset(); $("hallScholarId").value = ""; $("hallScholarEarnings").value = "0"; setText("hallScholarStatus", "");
+    });
+  }
+
+  async function loadHallOfFameAdmin() {
+    if (!currentUser || currentProfile?.role !== "admin" || currentProfile?.account_status !== "approved") return;
+    const client = requireDatabase();
+    const postRoot = $("hallPostAdminList");
+    const scholarRoot = $("hallScholarAdminList");
+    if (!postRoot || !scholarRoot) return;
+    postRoot.textContent = "Loading announcements…";
+    scholarRoot.textContent = "Loading scholars…";
+    try {
+      const [postsResult, scholarsResult] = await Promise.all([
+        client.from("scholarbrige_leaderposts").select("id,title,message,is_published,created_at").order("created_at", {ascending:false}).limit(100),
+        client.from("scholarbrige_scholar_spotlights").select("id,display_name,achievement,verified_earnings,currency,is_featured,is_published,consent_confirmed,created_at").order("created_at", {ascending:false}).limit(100)
+      ]);
+      if (postsResult.error) throw postsResult.error;
+      if (scholarsResult.error) throw scholarsResult.error;
+      postRoot.replaceChildren(); scholarRoot.replaceChildren();
+      if (!postsResult.data?.length) postRoot.textContent = "No announcements yet. Use the form above to add one.";
+      (postsResult.data || []).forEach(row => {
+        const card = document.createElement("article"); card.className = "task-card";
+        const h = document.createElement("h4"); h.textContent = `${row.title} · ${row.is_published ? "Published" : "Draft"}`;
+        const p = document.createElement("p"); p.textContent = row.message;
+        const actions = document.createElement("div"); actions.className = "sb-admin-actions";
+        const edit = document.createElement("button"); edit.type = "button"; edit.textContent = "Edit";
+        edit.addEventListener("click", () => { $("hallPostId").value=row.id; $("hallPostTitle").value=row.title; $("hallPostMessage").value=row.message; $("hallPostPublished").checked=!!row.is_published; $("hallPostTitle").focus(); });
+        const del = document.createElement("button"); del.type="button"; del.textContent="Delete";
+        del.addEventListener("click", async () => { if (!window.confirm("Delete this announcement?")) return; const {error}=await requireDatabase().from("scholarbrige_leaderposts").delete().eq("id",row.id); if(error){setText("hallPostStatus","Delete failed: "+error.message);return;} await loadHallOfFameAdmin(); await loadPublicHallOfFame(); });
+        actions.append(edit,del); card.append(h,p,actions); postRoot.appendChild(card);
+      });
+      if (!scholarsResult.data?.length) scholarRoot.textContent = "No scholars yet. Add a scholar above when the achievement and earnings are verified.";
+      (scholarsResult.data || []).forEach(row => {
+        const card=document.createElement("article"); card.className="task-card";
+        const h=document.createElement("h4"); h.textContent=`${row.display_name}${row.is_featured ? " · Featured" : ""}`;
+        const p=document.createElement("p"); p.textContent=`${row.achievement} · ${row.currency || "KES"} ${Number(row.verified_earnings||0).toLocaleString("en-KE")} · ${row.is_published ? "Published" : "Draft"} · Consent: ${row.consent_confirmed ? "confirmed" : "not confirmed"}`;
+        const actions=document.createElement("div"); actions.className="sb-admin-actions";
+        const edit=document.createElement("button"); edit.type="button"; edit.textContent="Edit";
+        edit.addEventListener("click",()=>{ $("hallScholarId").value=row.id; $("hallScholarName").value=row.display_name; $("hallScholarAchievement").value=row.achievement; $("hallScholarEarnings").value=row.verified_earnings; $("hallScholarConsent").checked=!!row.consent_confirmed; $("hallScholarFeatured").checked=!!row.is_featured; $("hallScholarPublished").checked=!!row.is_published; $("hallScholarName").focus(); });
+        const del=document.createElement("button"); del.type="button"; del.textContent="Delete";
+        del.addEventListener("click",async()=>{if(!window.confirm("Delete this scholar entry?"))return;const {error}=await requireDatabase().from("scholarbrige_scholar_spotlights").delete().eq("id",row.id);if(error){setText("hallScholarStatus","Delete failed: "+error.message);return;}await loadHallOfFameAdmin();await loadPublicHallOfFame();});
+        actions.append(edit,del); card.append(h,p,actions); scholarRoot.appendChild(card);
+      });
+    } catch(error) {
+      console.error("Hall of Fame admin load error:",error);
+      setText("hallPostStatus","Could not load entries: "+(error.message||"Check table permissions."));
+      setText("hallScholarStatus","Could not load entries. Check that the Hall of Fame SQL ran successfully and the current user is an approved admin.");
+    }
+  }
+
+  async function saveHallLeaderpost(event) {
+    event.preventDefault();
+    if (!currentUser || currentProfile?.role !== "admin" || currentProfile?.account_status !== "approved") return notice("Only an approved administrator can edit the Hall of Fame.","error");
+    const id=$("hallPostId").value;
+    const payload={title:$("hallPostTitle").value.trim(), message:$("hallPostMessage").value.trim(), is_published:$("hallPostPublished").checked, updated_at:new Date().toISOString()};
+    if (!payload.title || !payload.message) return setText("hallPostStatus","Enter both a title and a message.");
+    try { const q=id ? requireDatabase().from("scholarbrige_leaderposts").update(payload).eq("id",id) : requireDatabase().from("scholarbrige_leaderposts").insert(payload); const {error}=await q; if(error)throw error; $("hallLeaderpostForm").reset(); $("hallPostId").value=""; setText("hallPostStatus","Announcement saved."); await loadHallOfFameAdmin(); await loadPublicHallOfFame(); }
+    catch(error){setText("hallPostStatus","Could not save announcement: "+(error.message||"Please try again."));}
+  }
+
+  async function saveHallScholar(event) {
+    event.preventDefault();
+    if (!currentUser || currentProfile?.role !== "admin" || currentProfile?.account_status !== "approved") return notice("Only an approved administrator can edit the Hall of Fame.","error");
+    const id=$("hallScholarId").value;
+    const featured=$("hallScholarFeatured").checked;
+    const payload={display_name:$("hallScholarName").value.trim(), achievement:$("hallScholarAchievement").value.trim(), verified_earnings:Number($("hallScholarEarnings").value), currency:"KES", is_featured:featured, is_published:$("hallScholarPublished").checked, consent_confirmed:$("hallScholarConsent").checked, updated_at:new Date().toISOString()};
+    if(!payload.display_name||!payload.achievement||!Number.isFinite(payload.verified_earnings)||payload.verified_earnings<0)return setText("hallScholarStatus","Enter a name, achievement, and valid non-negative earnings amount.");
+    if(payload.is_published&&!payload.consent_confirmed)return setText("hallScholarStatus","Confirm the scholar's consent before publishing this entry.");
+    try {
+      if(featured){const {error:clearError}=await requireDatabase().from("scholarbrige_scholar_spotlights").update({is_featured:false,updated_at:new Date().toISOString()}).neq("id",id||"00000000-0000-0000-0000-000000000000");if(clearError)throw clearError;}
+      const q=id ? requireDatabase().from("scholarbrige_scholar_spotlights").update(payload).eq("id",id) : requireDatabase().from("scholarbrige_scholar_spotlights").insert(payload);
+      const {error}=await q;if(error)throw error;
+      $("hallScholarForm").reset(); $("hallScholarId").value=""; $("hallScholarEarnings").value="0"; setText("hallScholarStatus","Scholar entry saved."); await loadHallOfFameAdmin(); await loadPublicHallOfFame();
+    } catch(error){setText("hallScholarStatus","Could not save scholar: "+(error.message||"Please try again."));}
+  }
+
+  async function loadScholarbrigeAdminPanel() {
+    const root = $("scholarbrigeAdminPanel");
+    if (!root) return;
+    const isAdmin = currentUser && currentProfile?.role === "admin" && currentProfile?.account_status === "approved";
+    if (!isAdmin) {
+      root.classList.add("hidden");
+      return;
+    }
+
+    root.classList.remove("hidden");
+    root.innerHTML = `
+      <div class="sb-admin">
+        <h2>Scholarbrige Admin Management</h2>
+        <p>Activation alerts and member submissions.</p>
+        <div class="sb-admin-actions">
+          <button type="button" id="sbEnableSound">Enable alarm sound</button>
+          <button type="button" id="sbEnableBrowserAlerts">Enable browser alerts</button>
+          <button type="button" id="sbRefreshAlerts">Refresh alerts</button>
+        </div>
+        <p id="sbAlertStatus" role="status">Loading administrator notifications…</p>
+        <div id="sbAlertList" aria-live="polite"></div>
+      </div>
+      <section class="sb-admin hall-admin" style="margin-top:24px">
+        <h2>Public Hall of Fame Manager</h2>
+        <p>Only publish achievements and earnings you have checked and have permission to share. Public earnings are not automatically verified by this website.</p>
+        <h3>Leaderpost / announcement</h3>
+        <form id="hallLeaderpostForm" class="form">
+          <input type="hidden" name="id" id="hallPostId">
+          <label for="hallPostTitle">Title</label><input id="hallPostTitle" name="title" required maxlength="160" placeholder="e.g. Scholar achievement of the week">
+          <label for="hallPostMessage">Message</label><textarea id="hallPostMessage" name="message" required rows="3" maxlength="3000" placeholder="Write the announcement for visitors"></textarea>
+          <label><input type="checkbox" id="hallPostPublished" name="published"> Publish this announcement publicly</label>
+          <div class="sb-admin-actions"><button type="submit" class="primary" id="hallPostSave">Save announcement</button><button type="button" id="hallPostReset">Clear form</button></div>
+        </form>
+        <p id="hallPostStatus" role="status"></p><div id="hallPostAdminList"></div>
+        <hr>
+        <h3>Scholar spotlight / earnings</h3>
+        <form id="hallScholarForm" class="form">
+          <input type="hidden" name="id" id="hallScholarId">
+          <label for="hallScholarName">Public display name</label><input id="hallScholarName" name="display_name" required maxlength="100" placeholder="Scholar name or approved public alias">
+          <label for="hallScholarAchievement">Achievement</label><textarea id="hallScholarAchievement" name="achievement" required rows="3" maxlength="2000" placeholder="Describe the achievement"></textarea>
+          <label for="hallScholarEarnings">Verified earnings amount (KES)</label><input id="hallScholarEarnings" name="verified_earnings" type="number" min="0" step="0.01" required value="0">
+          <label><input type="checkbox" id="hallScholarConsent" name="consent"> I confirm the scholar consented to public display</label>
+          <label><input type="checkbox" id="hallScholarFeatured" name="featured"> Feature this scholar at the top</label>
+          <label><input type="checkbox" id="hallScholarPublished" name="published"> Publish this scholar publicly</label>
+          <div class="sb-admin-actions"><button type="submit" class="primary" id="hallScholarSave">Save scholar</button><button type="button" id="hallScholarReset">Clear form</button></div>
+        </form>
+        <p id="hallScholarStatus" role="status"></p><div id="hallScholarAdminList"></div>
+      </section>
+    `;
+
+    bindHallOfFameAdmin();
+    loadHallOfFameAdmin().catch(error => console.warn("Hall of Fame admin loading:", error));
+
+    const status = $("sbAlertStatus");
+    const list = $("sbAlertList");
+    const soundButton = $("sbEnableSound");
+    const browserButton = $("sbEnableBrowserAlerts");
+    const refreshButton = $("sbRefreshAlerts");
+
+    function playAlarm() {
+      if (!notificationSoundEnabled) return;
+      try {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) return;
+        notificationAudio ||= new AudioContextClass();
+        if (notificationAudio.state === "suspended") notificationAudio.resume();
+        const oscillator = notificationAudio.createOscillator();
+        const gain = notificationAudio.createGain();
+        oscillator.type = "sine";
+        oscillator.frequency.value = 880;
+        gain.gain.value = 0.13;
+        oscillator.connect(gain);
+        gain.connect(notificationAudio.destination);
+        oscillator.start();
+        oscillator.stop(notificationAudio.currentTime + 0.4);
+      } catch (error) {
+        console.warn("Alarm sound unavailable:", error);
+      }
+    }
+
+    soundButton.addEventListener("click", async () => {
+      try {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) throw new Error("Audio is not supported.");
+        notificationAudio ||= new AudioContextClass();
+        if (notificationAudio.state === "suspended") await notificationAudio.resume();
+        notificationSoundEnabled = true;
+        soundButton.textContent = "Alarm sound enabled";
+        playAlarm();
+      } catch (error) {
+        status.textContent = "Sound could not start. Check your phone's sound settings and try again.";
+      }
+    });
+
+    browserButton.addEventListener("click", async () => {
+      if (!("Notification" in window)) {
+        status.textContent = "Browser notifications are not supported on this device.";
+        return;
+      }
+      const permission = await Notification.requestPermission();
+      status.textContent = permission === "granted"
+        ? "Browser alerts enabled while this page is running."
+        : "Browser alerts were not enabled. Check your browser's site permissions.";
+    });
+
+    async function refreshAlerts() {
+      if (!currentUser || currentProfile?.role !== "admin" || currentProfile?.account_status !== "approved") {
+        root.classList.add("hidden");
+        return;
+      }
+      refreshButton.disabled = true;
+      try {
+        const { data, error } = await requireDatabase()
+          .from("admin_notifications")
+          .select("id,user_id,event_type,membership_level,phone,message,submitted_fbk_code,is_read,created_at")
+          .order("created_at", { ascending: false })
+          .limit(100);
+        if (error) throw error;
+
+        const notifications = data || [];
+        const newest = notifications[0];
+        if (newest && newestNotificationId && newest.id !== newestNotificationId && newest.event_type === "fbk_submitted") {
+          playAlarm();
+          if ("Notification" in window && Notification.permission === "granted") {
+            try {
+              new Notification("Scholarbrige: FBK submitted", {
+                body: "A member submitted an FBK number. Open the admin panel to review it."
+              });
+            } catch (_) {}
+          }
+        }
+        if (newest) newestNotificationId = newest.id;
+
+        status.textContent = `${notifications.filter(item => !item.is_read).length} unread notification(s).`;
+        list.replaceChildren();
+        if (!notifications.length) {
+          list.textContent = "No notifications yet.";
+          return;
+        }
+
+        notifications.forEach(item => {
+          const card = document.createElement("article");
+          card.className = "task-card";
+          const heading = document.createElement("h3");
+          heading.textContent = item.event_type === "activation_requested"
+            ? "New activation request"
+            : item.event_type === "fbk_page_opened"
+              ? "Member reached FBK page"
+              : item.event_type === "upgrade_requested"
+                ? "Account upgrade requested"
+                : item.event_type === "withdrawal_requested"
+                  ? "Withdrawal request received"
+                  : "FBK number submitted";
+          const message = document.createElement("p");
+          message.textContent = item.message || "Administrator notification";
+          const details = document.createElement("p");
+          details.textContent = `Phone: ${item.phone || "—"} · Level: ${item.membership_level ?? "—"} · ${item.created_at ? new Date(item.created_at).toLocaleString() : ""}`;
+          card.append(heading, message, details);
+
+          if (item.event_type === "fbk_submitted" && item.submitted_fbk_code) {
+            const code = document.createElement("p");
+            code.textContent = "Submitted FBK number: " + item.submitted_fbk_code;
+            card.appendChild(code);
+          }
+
+          if (!item.is_read) {
+            const readButton = document.createElement("button");
+            readButton.type = "button";
+            readButton.textContent = "Mark as read";
+            readButton.addEventListener("click", async () => {
+              const { error: updateError } = await requireDatabase()
+                .from("admin_notifications")
+                .update({ is_read: true })
+                .eq("id", item.id);
+              if (updateError) {
+                status.textContent = "Could not mark notification as read: " + updateError.message;
+                return;
+              }
+              refreshAlerts();
+            });
+            card.appendChild(readButton);
+          }
+          list.appendChild(card);
+        });
+      } catch (error) {
+        console.error("Admin notification error:", error);
+        status.textContent = "Notifications could not load. Check the admin_notifications table, its columns, and approved-admin RLS policies.";
+      } finally {
+        refreshButton.disabled = false;
+      }
+                                                                                                                                                                                                                       }
