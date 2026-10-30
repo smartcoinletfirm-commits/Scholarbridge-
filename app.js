@@ -1691,3 +1691,176 @@ refreshButton.addEventListener("click", refreshAlerts);
       console.warn("Chat presence unavailable:", error.message);
     }
          }
+async function openPrivateChat(member) {
+    activeChatMember = member;
+    setText("chatHeading", `Chat with ${member.full_name || member.username || "Scholar"}`);
+    const presence = $("chatPresence");
+    if (presence) { presence.classList.remove("is-online"); presence.innerHTML = "<i></i> Status unavailable"; }
+    $("chatForm")?.classList.remove("hidden");
+    await loadPrivateMessages();
+    watchChatPresence(member);
+    if (chatRefreshTimer) clearInterval(chatRefreshTimer);
+      if (chatPresenceChannel && db) { try { await db.removeChannel(chatPresenceChannel); } catch (_) {} chatPresenceChannel = null; }
+    chatRefreshTimer = setInterval(loadPrivateMessages, 7000);
+  }
+
+  async function loadPrivateMessages() {
+    if (!activeChatMember || !currentUser || !$("chatMessages")) return;
+    const root = $("chatMessages");
+    try {
+      const client = requireDatabase();
+      const { data, error } = await client.from("scholarbrige_private_messages").select("id,sender_id,recipient_id,body,created_at,read_at").or(`and(sender_id.eq.${currentUser.id},recipient_id.eq.${activeChatMember.id}),and(sender_id.eq.${activeChatMember.id},recipient_id.eq.${currentUser.id})`).order("created_at", { ascending: true }).limit(100);
+      if (error) throw error;
+      root.replaceChildren();
+      if (!data?.length) { root.textContent = "No messages yet. Start the conversation below."; return; }
+      data.forEach(message => { const bubble = document.createElement("article"); bubble.className = "chat-message" + (message.sender_id === currentUser.id ? " mine" : ""); const body = document.createElement("p"); body.textContent = message.body; const time = document.createElement("time"); time.dateTime = message.created_at; time.textContent = new Date(message.created_at).toLocaleString(); bubble.append(body, time); root.appendChild(bubble); });
+      root.scrollTop = root.scrollHeight;
+      await client.from("scholarbrige_private_messages").update({ read_at: new Date().toISOString() }).eq("sender_id", activeChatMember.id).eq("recipient_id", currentUser.id).is("read_at", null);
+    } catch (error) { console.error("Private messages failed:", error); root.textContent = "Private chat is unavailable until setup.sql and its RLS policies are applied."; }
+  }
+
+  async function sendPrivateMessage(event) {
+    event.preventDefault();
+    const body = String($("chatMessageInput")?.value || "").trim();
+    if (!body || !activeChatMember || !currentUser) return;
+    try {
+      const { error } = await requireDatabase().from("scholarbrige_private_messages").insert({ sender_id: currentUser.id, recipient_id: activeChatMember.id, body });
+      if (error) throw error;
+      $("chatMessageInput").value = "";
+      setText("chatNotice", "Message sent.");
+      await loadPrivateMessages();
+    } catch (error) { console.error("Message send failed:", error); setText("chatNotice", "Could not send message. Check chat table permissions and setup.sql."); }
+  }
+
+  function bindMemberTools() {
+    bind("withdrawForm", "submit", submitWithdrawal);
+    bind("upgradeForm", "submit", submitUpgrade);
+    bind("avatarUpload", "change", uploadMemberAvatar);
+    bind("chatForm", "submit", sendPrivateMessage);
+    bind("upgradeNextLevel", "change", () => {
+      if (memberLevel() >= 7) return setText("upgradeFeeText", "Organic Upgrade Only — paid upgrades are not available from Level 7 onward.");
+      const fee = UPGRADE_FEES[Number($("upgradeNextLevel")?.value)];
+      setText("upgradeFeeText", fee ? `Upgrade fee: ${formatMoney(fee)}` : "No upgrade fee available.");
+    });
+    bind("memberSearchInput", "input", () => { if (memberSearchDelay) clearTimeout(memberSearchDelay); memberSearchDelay = setTimeout(searchMembers, 350); });
+  }
+
+  function bindEvents() {
+    // Bind authentication first so optional dashboard features cannot block login/signup.
+    bind("loginForm", "submit", login);
+    bind("signupForm", "submit", signup);
+    bind("activationForm", "submit", requestActivation);
+    bind("verificationForm", "submit", verifyActivationCode);
+    bind("resetPassword", "click", resetPassword);
+    bind("checkVerification", "click", refreshStatus);
+    bind("checkPending", "click", refreshStatus);
+    ["logoutActivation", "logoutVerification", "logoutPending", "logoutDashboard", "dashLogout"].forEach(id => bind(id, "click", logout));
+    bind("showSupport", "click", () => showView("supportView"));
+    bind("supportButton", "click", contactSupport);
+    bind("closeSupport", "click", () => showView("dashboardView"));
+    bind("copyReferral", "click", copyReferral);
+    bind("shareInvite", "click", shareInvite);
+    bind("welcomeBonusButton", "click", triggerWelcomeBonusReveal);
+    bind("walletWithdrawJump", "click", () => $("withdrawPanel")?.scrollIntoView({behavior:"smooth",block:"start"}));
+    bind("walletUpgradeJump", "click", () => $("upgradePanel")?.scrollIntoView({behavior:"smooth",block:"start"}));
+    bind("walletSellJump", "click", () => { const panel = $("sellAccountPanel"); if (panel) { panel.classList.remove("hidden"); panel.scrollIntoView({behavior:"smooth",block:"start"}); } });
+    bind("refreshTasks", "click", loadTasks);
+    bind("refreshActivationQueue", "click", loadAdminActivationQueue);
+    bind("refreshSaleQueue", "click", loadAdminSaleQueue);
+    bind("enableActivationAlerts", "click", async () => {
+      if (!("Notification" in window)) return notice("Browser notifications are not supported here.", "warning");
+      const permission = await Notification.requestPermission();
+      notice(permission === "granted" ? "Browser notifications enabled while the admin page is running." : "Notification permission was not granted.", permission === "granted" ? "success" : "warning");
+    });
+    bind("sellAccountForm", "submit", submitAccountSale);
+    bind("sellAccountLevel", "change", updateSalePrice);
+    bind("countrySelect", "change", updateCountryWelcome);
+    bind("membershipLevel", "change", updateActivationCurrency);
+
+    // Bind optional member tools only after core authentication controls are connected.
+    try {
+      bindMemberTools();
+    } catch (error) {
+      console.error("Optional member tools could not be initialized:", error);
+    }
+
+    document.querySelectorAll("[data-tab]").forEach(button => {
+      if (button.dataset.appTabBound === "true") return;
+      button.addEventListener("click", () => activateTab(button.dataset.tab));
+      button.dataset.appTabBound = "true";
+    });
+  }
+
+  async function startApp() {
+    bindEvents();
+    rotateTheme();
+    setInterval(rotateTheme, 60 * 1000); // Checks the 40-minute theme interval without changing it every minute.
+    updateCelestialMark();
+    setInterval(updateCelestialMark, 60 * 1000);
+    updateCountryWelcome();
+    updateActivationCurrency();
+    updateSalePrice();
+    loadPublicHallOfFame();
+
+    if (!db) {
+      showView("authView");
+      showError("The sign-in service did not load. Check your internet connection and reload the page.");
+      return;
+    }
+
+    try {
+      const { data, error } = await db.auth.getSession();
+      if (error) throw error;
+      currentUser = data?.session?.user || null;
+      if (currentUser) {
+        await routeUser(currentUser);
+      } else {
+        showView("authView");
+      }
+    } catch (error) {
+      console.error("Startup error:", error);
+      showView("authView");
+      showError("Scholarbrige could not start: " + (error.message || "Refresh and try again."));
+    }
+
+    if (!authListenerRegistered) {
+      authListenerRegistered = true;
+      db.auth.onAuthStateChange((event, session) => {
+        currentUser = session?.user || null;
+        if (event === "SIGNED_OUT") {
+          currentProfile = null;
+          showView("authView");
+          return;
+        }
+        if (currentUser && ["SIGNED_IN", "TOKEN_REFRESHED", "USER_UPDATED"].includes(event)) {
+          // Defer to avoid running database calls inside the auth event callback.
+          setTimeout(() => routeUser(currentUser), 0);
+        }
+      });
+    }
+  }
+
+  function safeStartApp() {
+    try {
+      const result = startApp();
+      if (result && typeof result.catch === "function") {
+        result.catch(error => {
+          console.error("Unexpected Scholarbrige startup error:", error);
+          showView("authView");
+          showError("Scholarbrige could not start: " + (error?.message || "Please reload and try again."));
+        });
+      }
+    } catch (error) {
+      console.error("Unexpected Scholarbrige startup error:", error);
+      showView("authView");
+      showError("Scholarbrige could not start: " + (error?.message || "Please reload and try again."));
+    }
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", safeStartApp, { once: true });
+  } else {
+    safeStartApp();
+  }
+})();
+                 
