@@ -1350,3 +1350,344 @@ function bindHallOfFameAdmin() {
         refreshButton.disabled = false;
       }
                                                                                                                                                                                                                        }
+refreshButton.addEventListener("click", refreshAlerts);
+
+    // Establish the current newest notification without sounding for old alerts.
+    try {
+      const { data, error } = await requireDatabase()
+        .from("admin_notifications")
+        .select("id")
+        .order("created_at", { ascending: false })
+        .limit(1);
+      if (!error && data?.length) newestNotificationId = data[0].id;
+    } catch (error) {
+      console.warn("Could not initialise notification polling:", error);
+    }
+
+    await refreshAlerts();
+    if (notificationTimer) clearInterval(notificationTimer);
+    notificationTimer = setInterval(refreshAlerts, 8000);
+  }
+
+  async function updateSalePrice() {
+    const level = Number($("sellAccountLevel")?.value || 4);
+    const prices = { 1: 0, 2: 0, 3: 0, 4: 4200, 5: 12880, 6: 18000.8 };
+    setText("sellAccountPrice", "Estimated display price: " + formatMoney(prices[level] || 0) + ". Final requests require manual review.");
+  }
+
+  async function submitAccountSale(event) {
+    event.preventDefault();
+    if (!currentUser || currentProfile?.account_status !== "approved") {
+      return notice("Only approved members can submit an account service request.", "error");
+    }
+    const level = Number($("sellAccountLevel")?.value || 4);
+    const prices = { 4: 4200, 5: 12880, 6: 18000.8 };
+    const price = prices[level];
+    if (!price) return notice("Choose a valid account level.", "error");
+
+    try {
+      const { error } = await requireDatabase().from("account_sale_requests").insert({
+        user_id: currentUser.id,
+        level,
+        price,
+        status: "submitted"
+      });
+      if (error) throw error;
+      notice("Your account service request was submitted for manual review.", "success");
+    } catch (error) {
+      console.error("Account sale request failed:", error);
+      notice("Could not submit request: " + (error.message || "Confirm the account_sale_requests table columns."), "error");
+    }
+  }
+
+  async function copyReferral() {
+    const code = String($("refCode")?.value || $("refCode")?.textContent || currentProfile?.referral_code || "").trim();
+    if (!code || code.includes("Not available")) return notice("Your referral code is not available yet.", "warning");
+    try {
+      await navigator.clipboard.writeText(code);
+      notice("Referral code copied.", "success");
+    } catch (_) {
+      window.prompt("Copy your referral code:", code);
+    }
+  }
+
+  async function shareInvite() {
+    const code = String(currentProfile?.referral_code || $("refCode")?.value || "").trim();
+    if (!code) return notice("Your referral code is not available yet.", "warning");
+    const link = "https://tinyurl.com/yc5svrvs";
+    const text = `Join me on Scholarbrige Academic Hub. Use my referral code ${code}: ${link}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: BRAND_NAME, text, url: link });
+      } else if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        notice("Your referral message was copied. Share it with your friends.", "success");
+      } else {
+        window.prompt("Copy and share this invitation:", text);
+      }
+    } catch (error) {
+      if (error?.name !== "AbortError") window.prompt("Copy and share this invitation:", text);
+    }
+  }
+
+  function applyTheme(theme) {
+    const valid = THEME_ORDER.includes(theme) ? theme : "forest-green";
+    document.documentElement.dataset.theme = valid;
+    document.body.dataset.theme = valid;
+    try { localStorage.setItem("scholarbrige_theme", valid); } catch (_) {}
+  }
+
+  function rotateTheme() {
+    let started = Number(localStorage.getItem(THEME_KEY)) || Date.now();
+    if (Date.now() - started >= THEME_INTERVAL) {
+      const current = document.documentElement.dataset.theme || "forest-green";
+      const index = THEME_ORDER.indexOf(current);
+      applyTheme(THEME_ORDER[(index + 1) % THEME_ORDER.length]);
+      started = Date.now();
+      localStorage.setItem(THEME_KEY, String(started));
+    } else {
+      const saved = localStorage.getItem("scholarbrige_theme");
+      if (saved && THEME_ORDER.includes(saved)) applyTheme(saved);
+      else applyTheme("forest-green");
+    }
+  }
+
+  function updateCelestialMark() {
+    const mark = $("celestialMark");
+    const hour = new Date().getHours();
+    const night = hour >= 18 || hour < 6;
+    document.body.dataset.timephase = night ? "night" : "day";
+    if (mark) {
+      mark.textContent = night ? "☾" : "☀";
+      mark.setAttribute("aria-label", night ? "Night theme" : "Day theme");
+      mark.title = night ? "Night sky" : "Daylight";
+    }
+  }
+
+  function updateActivationCurrency() {
+    const note = $("activationCurrencyNote");
+    if (!note) return;
+    const country = currentProfile?.country || $("countrySelect")?.value || "Kenya";
+    const currency = COUNTRY_CURRENCY[country] || COUNTRY_CURRENCY.Kenya;
+    const levels = Object.entries(ACTIVATION_FEES).map(([level, fee]) => {
+      const amount = fee * currency.perKes;
+      return `L${level}: ${currency.symbol} ${amount.toLocaleString(currency.locale, { maximumFractionDigits: currency.decimals })}`;
+    });
+    note.textContent = country === "Kenya"
+      ? `Base activation fees: ${levels.join(" · ")}.`
+      : `Indicative ${currency.code} equivalents from the same KES base: ${levels.join(" · ")}. Estimates only; confirm the final amount through the official payment instructions.`;
+  }
+
+  function updateCountryWelcome() {
+    const select = $("countrySelect");
+    const welcome = $("countryWelcome");
+    if (!select || !welcome) { updateActivationCurrency(); return; }
+    const greetings = {
+      Kenya: "🇰🇪 Karibu to Scholarbrige!",
+      Uganda: "🇺🇬 Tukusanyukidde to Scholarbrige!",
+      Tanzania: "🇹🇿 Karibu Scholarbrige!",
+      Ghana: "🇬🇭 Akwaaba to Scholarbrige!",
+      Nigeria: "🇳🇬 Welcome to Scholarbrige!"
+    };
+    if (greetings[select.value]) {
+      welcome.textContent = greetings[select.value];
+      welcome.classList.remove("hidden");
+    } else {
+      welcome.classList.add("hidden");
+      welcome.textContent = "";
+    }
+  }
+
+
+  // Requested member tools. Database structures and policies are supplied in setup.sql.
+  const UPGRADE_FEES = { 2: 700, 3: 1400, 4: 2000, 5: 2780, 6: 3500, 7: 4200 };
+  let activeChatMember = null;
+  let chatRefreshTimer = null;
+  let upgradeMode = false;
+
+  function memberLevel() {
+    return Number(currentActivationRequest?.membership_level || currentProfile?.membership_level || 1);
+  }
+
+  function updateUpgradeOptions() {
+    const current = memberLevel();
+    setText("profileDisplayName", currentProfile?.full_name || currentProfile?.username || "Scholar");
+    setText("profileMemberLevel", `Current membership level: ${current}`);
+    setText("upgradeCurrentLevel", `Current membership level: ${current}`);
+    const select = $("upgradeNextLevel");
+    const form = $("upgradeForm");
+    const submitButton = form?.querySelector('[type="submit"]');
+    if (!select) return;
+    select.replaceChildren();
+
+    // From Level 7 onward, upgrades are organic only; no paid request can be submitted.
+    if (current >= 7) {
+      const option = document.createElement("option");
+      option.value = "";
+      option.textContent = "Organic Upgrade Only";
+      select.appendChild(option);
+      select.disabled = true;
+      if (submitButton) submitButton.classList.add("hidden");
+      if (form) form.dataset.organicOnly = "true";
+      setText("upgradeFeeText", "Organic Upgrade Only — paid upgrades are not available from Level 7 onward.");
+      return;
+    }
+
+    if (submitButton) submitButton.classList.remove("hidden");
+    if (form) delete form.dataset.organicOnly;
+    const next = current + 1;
+    const fee = UPGRADE_FEES[next];
+    if (!fee) {
+      const option = document.createElement("option");
+      option.value = "";
+      option.textContent = "Organic Upgrade Only";
+      select.appendChild(option);
+      select.disabled = true;
+      if (submitButton) submitButton.classList.add("hidden");
+      if (form) form.dataset.organicOnly = "true";
+      setText("upgradeFeeText", "Organic Upgrade Only — paid upgrades are not available at this level.");
+      return;
+    }
+    select.disabled = false;
+    const option = document.createElement("option");
+    option.value = String(next);
+    option.textContent = `Level ${current} → ${next} · ${formatMoney(fee)}`;
+    select.appendChild(option);
+    setText("upgradeFeeText", `Upgrade fee: ${formatMoney(fee)}`);
+  }
+
+  async function submitUpgrade(event) {
+    event.preventDefault();
+    if (!currentUser || currentProfile?.account_status !== "approved") return notice("Only approved members can request an upgrade.", "error");
+    if (memberLevel() >= 7 || $("upgradeForm")?.dataset.organicOnly === "true") {
+      updateUpgradeOptions();
+      return notice("Organic Upgrade Only: paid upgrade requests are unavailable from Level 7 onward.", "info");
+    }
+    const nextLevel = Number($("upgradeNextLevel")?.value);
+    const currentLevel = memberLevel();
+    const fee = UPGRADE_FEES[nextLevel];
+    if (nextLevel !== currentLevel + 1 || !fee) return notice("Choose the next available membership level.", "error");
+    const button = event.currentTarget.querySelector('[type="submit"]');
+    try {
+      setButtonLoading(button, true, "Preparing FBK step…");
+      const { data, error } = await requireDatabase().from("scholarbrige_upgrade_requests").insert({
+        user_id: currentUser.id, current_level: currentLevel, next_level: nextLevel, fee, status: "awaiting_fbk"
+      }).select("id").single();
+      if (error) throw error;
+      const { error: notifyError } = await requireDatabase().rpc("scholarbrige_notify_upgrade_request", { p_upgrade_request_id: data.id });
+      if (notifyError) console.warn("Upgrade admin notification failed:", notifyError.message);
+      upgradeMode = true;
+      setText("verificationStatus", `Upgrade request for Level ${currentLevel} → ${nextLevel} (${formatMoney(fee)}) is ready. Submit your FBK reference code below. An administrator must manually review it.`);
+      await sendAdminAlert("fbk_page_opened");
+      showView("verificationView");
+      notice("Upgrade request created. Continue with the existing FBK submission page.", "success");
+    } catch (error) {
+      console.error("Upgrade request failed:", error);
+      notice("Could not start the upgrade: " + (error.message || "Check the setup SQL and try again."), "error");
+    } finally { setButtonLoading(button, false); }
+  }
+
+  async function uploadMemberAvatar(event) {
+    const file = event.target.files?.[0];
+    if (!file || !currentUser) return;
+    if (!/^image\/(png|jpeg|webp)$/.test(file.type) || file.size > 3 * 1024 * 1024) {
+      notice("Choose a JPG, PNG or WebP image under 3 MB.", "error"); event.target.value = ""; return;
+    }
+    try {
+      const extension = file.type === "image/jpeg" ? "jpg" : file.type.split("/")[1];
+      const path = `${currentUser.id}/avatar-${Date.now()}.${extension}`;
+      const client = requireDatabase();
+      const { error: uploadError } = await client.storage.from("scholarbrige-avatars").upload(path, file, { upsert: true, contentType: file.type });
+      if (uploadError) throw uploadError;
+      const { data: publicData } = client.storage.from("scholarbrige-avatars").getPublicUrl(path);
+      const avatarUrl = publicData?.publicUrl;
+      const { error: profileError } = await client.from("profiles").update({ avatar_path: path }).eq("id", currentUser.id);
+      if (profileError) throw profileError;
+      currentProfile.avatar_path = path;
+      const img = $("memberAvatar"); if (img && avatarUrl) img.src = avatarUrl;
+      notice("Profile photo uploaded.", "success");
+    } catch (error) {
+      console.error("Avatar upload failed:", error);
+      notice("Could not upload the photo. Run setup.sql and check Storage/profile permissions.", "error");
+    } finally { event.target.value = ""; }
+  }
+
+  async function submitWithdrawal(event) {
+    event.preventDefault();
+    if (!currentUser || currentProfile?.account_status !== "approved") return notice("Only approved members can request withdrawals.", "error");
+    const amount = Number($("withdrawAmount")?.value);
+    const phone = cleanPhone($("withdrawPhone")?.value || currentProfile?.phone);
+    if (!Number.isFinite(amount) || amount < 2000) return notice("The minimum withdrawal is KES 2,000.", "error");
+    if (!phone) return notice("Enter a valid M-Pesa phone number.", "error");
+    const button = event.currentTarget.querySelector('[type="submit"]');
+    try {
+      setButtonLoading(button, true, "Submitting request…");
+      const { error } = await requireDatabase().rpc("scholarbrige_request_withdrawal", { p_amount: amount, p_phone: phone });
+      if (error) throw error;
+      event.currentTarget.reset();
+      setText("withdrawNotice", "Withdrawal request submitted for manual review. No money has been sent yet.");
+      await loadWithdrawalHistory();
+    } catch (error) {
+      console.error("Withdrawal request failed:", error);
+      setText("withdrawNotice", "Could not submit: " + (error.message || "Check wallet balance and setup.sql."));
+    } finally { setButtonLoading(button, false); }
+  }
+
+  async function loadWithdrawalHistory() {
+    if (!currentUser || !$("withdrawHistory")) return;
+    const root = $("withdrawHistory"); root.textContent = "Loading requests…";
+    try {
+      const { data, error } = await requireDatabase().from("scholarbrige_withdrawal_requests").select("id,amount,phone,status,created_at").eq("user_id", currentUser.id).order("created_at", { ascending: false }).limit(10);
+      if (error) throw error;
+      root.replaceChildren();
+      if (!data?.length) { root.textContent = "No withdrawal requests yet."; return; }
+      data.forEach(row => { const item = document.createElement("div"); item.className = "history-item"; const left = document.createElement("span"); left.textContent = formatBalanceMoney(row.amount); const right = document.createElement("small"); right.textContent = `${row.status} · ${new Date(row.created_at).toLocaleDateString()}`; item.append(left, right); root.appendChild(item); });
+    } catch (error) { root.textContent = "Withdrawal history unavailable until setup.sql is applied."; console.warn(error); }
+  }
+
+  let memberSearchDelay = null;
+  async function searchMembers() {
+    const query = String($("memberSearchInput")?.value || "").trim();
+    const root = $("memberSearchResults"); if (!root) return;
+    if (query.length < 2) { root.textContent = "Type at least two characters to search."; return; }
+    root.textContent = "Searching approved members…";
+    try {
+      const { data, error } = await requireDatabase().rpc("scholarbrige_search_members", { p_query: query });
+      if (error) throw error;
+      root.replaceChildren();
+      if (!data?.length) { root.textContent = "No matching approved members found."; return; }
+      data.forEach(member => {
+        if (member.id === currentUser?.id) return;
+        const row = document.createElement("div"); row.className = "member-result";
+        const img = document.createElement("img"); img.alt = "";
+        const avatarPath = member.avatar_path;
+        const avatarUrl = avatarPath ? requireDatabase().storage.from("scholarbrige-avatars").getPublicUrl(avatarPath).data?.publicUrl : null;
+        img.src = avatarUrl || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Crect width='80' height='80' rx='40' fill='%23e9f7d1'/%3E%3Ctext x='40' y='50' font-size='32' text-anchor='middle' fill='%23073b2b'%3ES%3C/text%3E%3C/svg%3E";
+        const info = document.createElement("div"); info.className = "member-result-info"; const name = document.createElement("b"); name.textContent = member.full_name || member.username || "Scholar"; const small = document.createElement("small"); small.textContent = member.username ? `@${member.username}` : "Scholarbrige member"; info.append(name, small);
+        const button = document.createElement("button"); button.className = "secondary"; button.type = "button"; button.textContent = "Message"; button.addEventListener("click", () => openPrivateChat(member)); row.append(img, info, button); root.appendChild(row);
+      });
+    } catch (error) { console.error("Member search failed:", error); root.textContent = "Member search is not ready. Apply setup.sql and confirm RPC permissions."; }
+  }
+
+  let chatPresenceChannel = null;
+  async function watchChatPresence(member) {
+    const badge = $("chatPresence");
+    if (!badge || !db || !currentUser || !member?.id) return;
+    if (chatPresenceChannel) { try { await db.removeChannel(chatPresenceChannel); } catch (_) {} chatPresenceChannel = null; }
+    try {
+      const channel = db.channel(`scholarbrige-presence-${[currentUser.id, member.id].sort().join("-")}`, { config: { presence: { key: currentUser.id } } });
+      channel.on("presence", { event: "sync" }, () => {
+        const state = channel.presenceState();
+        const online = Object.keys(state).some(key => key === member.id || (state[key] || []).some(item => item.user_id === member.id));
+        badge.classList.toggle("is-online", online);
+        badge.innerHTML = `<i></i> ${online ? "Online" : "Offline"}`;
+      });
+      channel.subscribe(async state => {
+        if (state === "SUBSCRIBED") await channel.track({ user_id: currentUser.id, online_at: new Date().toISOString() });
+      });
+      chatPresenceChannel = channel;
+    } catch (error) {
+      badge.classList.remove("is-online"); badge.innerHTML = "<i></i> Status unavailable";
+      console.warn("Chat presence unavailable:", error.message);
+    }
+         }
