@@ -431,4 +431,26 @@ body[data-timephase="night"] .flag-strip-track{color:#c4d8c9}
 #dashboardView .bonus-button small { color:#5c4a26; }
 #dashboardView .wallet-withdraw-button,#dashboardView .wallet-service-button { border:1px solid #d4b66e;border-radius:11px;padding:12px 15px;background:#ffffff0d;color:#f5e7bd;font-weight:800;text-align:left;cursor:pointer; }
 #dashboardView .wallet-withdraw-button { background:#d7b665;color:#17243a; }
+#dashboardView .dashboard-tools-row { display:grid;grid-template-columns:minmax(180px,.55fr) minmax(0,1.45fr);gap:16px;margin:0 0 22px; }
+#dashboardView .member-status-card,#dashboardView .referral-reward-card { border:1px solid #d5b66d44;border-radius:17px;background:linear-gradient(145deg,#142743,#1a3150);padding:20px; }
+#dashboardView .member-status-card>strong { color:#f1d58d; }
+#dashboardView .referral-reward-card h3 { color:#f4d98f;margin:6px 0;font-size:1.35rem; }
+#dashboardView .referral-reward-card p,#dashboardView .referral-reward-card small { color:#c8d2df; }
+#dashboardView .reward-rules { display:flex;flex-wrap:wrap;gap:8px;margin:14px 0; }
+#dashboardView .reward-rules span { border:1px solid #d7b96e55;border-radius:20px;padding:7px 11px;color:#f1dfb1;background:#ffffff08;font-size:.77rem;font-weight:700; }
+#dashboardView .reward-progress { display:grid;gap:5px;padding-top:12px;border-top:1px solid #ffffff20; }
+#dashboardView .reward-progress b { color:#f3d98e;font-size:.85rem; }
+#dashboardView .welcome-toast { position:fixed;z-index:10001;left:50%;top:45%;transform:translate(-50%,-50%);width:min(90vw,420px);padding:23px 26px;text-align:center;border:1px solid #e6c56d;border-radius:17px;background:#10223c;color:#fff0bd;box-shadow:0 20px 70px #0008;font-weight:800;font-size:1.05rem;animation:toastPop .25s ease-out; }
+@keyframes toastPop { from{opacity:0;transform:translate(-50%,-42%) scale(.85)}to{opacity:1;transform:translate(-50%,-50%) scale(1)} }
+#dashboardView .confetti-layer { position:fixed;inset:0;z-index:10000;pointer-events:none;overflow:hidden;display:none; }
+#dashboardView .confetti-layer.active { display:block; }
+#dashboardView .confetti-piece { position:absolute;top:-20px;width:9px;height:15px;border-radius:2px;opacity:.95;animation:confettiFall var(--fall) cubic-bezier(.2,.65,.35,1) forwards; }
+@keyframes confettiFall { to { transform:translate3d(0,110vh,0) rotate(var(--spin));opacity:.1 } }
+#dashboardView .chat-presence { display:inline-flex;align-items:center;gap:6px;color:#aab5c5;font-size:.75rem;margin-left:10px; }
+#dashboardView .chat-presence i { width:8px;height:8px;border-radius:50%;background:#929cac;display:inline-block; }
+#dashboardView .chat-presence.is-online { color:#8ed7a5; }
+#dashboardView .chat-presence.is-online i { background:#5bd486;box-shadow:0 0 0 4px #5bd48622; }
+#dashboardView .profile-legacy-hidden { display:none!important; }
+@media(max-width:720px){#dashboardView .wallet-feature{grid-template-columns:1fr}#dashboardView .wallet-feature-side{display:grid;grid-template-columns:1fr 1fr}#dashboardView .bonus-button{grid-column:1/-1;min-height:118px}#dashboardView .dashboard-tools-row{grid-template-columns:1fr}#dashboardView .dash-top{align-items:flex-start}#dashboardView .top-profile{gap:7px}#dashboardView .top-avatar-label{width:50px;height:50px}#dashboardView .top-profile-copy b{max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
+@media(prefers-reduced-motion:reduce){#dashboardView .member-avatar,#dashboardView #walletHeadline,#dashboardView .confetti-piece{animation:none!important}}
 
