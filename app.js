@@ -898,27 +898,41 @@ async function loadTasks() {
   }
 
   async function reviewFbkSubmission(row, decision, profile, button) {
-    if (!currentUser || currentProfile?.role !== "admin" || currentProfile?.account_status !== "approved") {
-      return notice("Only an approved administrator can review submissions.", "error");
+  if (!currentUser || currentProfile?.role !== "admin" || currentProfile?.account_status !== "approved") {
+    return notice("Only an approved administrator can review submissions.", "error");
+  }
+
+  if (!row?.id || !["approved", "rejected"].includes(decision)) {
+    return notice("This FBK review request is incomplete or invalid.", "error");
+  }
+
+  let adminNote = "";
+  if (decision === "rejected") {
+    adminNote = window.prompt("Reason or instructions for the member (optional):", "") || "";
+  }
+
+  try {
+    setButtonLoading(button, true, "Saving decision…");
+    const client = requireDatabase();
+    let isUpgradeReview = false;
+
+    // Check whether this FBK submission belongs to an upgrade.
+    if (row.user_id) {
+      const { data: pendingUpgrade, error: upgradeLookupError } = await client
+        .from("scholarbrige_upgrade_requests")
+        .select("id")
+        .eq("user_id", row.user_id)
+        .eq("status", "awaiting_fbk")
+        .limit(1);
+
+      if (upgradeLookupError) throw upgradeLookupError;
+      isUpgradeReview = Boolean(pendingUpgrade?.length);
     }
-    let adminNote = "";
-    if (decision === "rejected") {
-      adminNote = window.prompt("Reason or instructions for the member (optional):", "") || "";
-    }
-    try {
-      setButtonLoading(button, true, "Saving decision…");
-      const client = requireDatabase();
-      let isUpgradeReview = false;
-      if (row.user_id) {
-        const { data: pendingUpgrade, error: upgradeLookupError } = await client
-          .from("scholarbrige_upgrade_requests")
-          .select("id")
-          .eq("user_id", row.user_id)
-          .eq("status", "awaiting_fbk")
-          .limit(1);
-        if (!upgradeLookupError && pendingUpgrade?.length) isUpgradeReview = true;
-      }
-      const { error: submissionError } = await client
+
+    if (isUpgradeReview) {
+      // Upgrade review: update the FBK submission.
+      // The existing database trigger should update the upgrade request.
+      const { error } = await client
         .from("fbk_code_submissions")
         .update({
           status: decision === "approved" ? "accepted" : "rejected",
@@ -926,28 +940,41 @@ async function loadTasks() {
           reviewed_at: new Date().toISOString()
         })
         .eq("id", row.id);
-      if (submissionError) throw submissionError;
 
-      if (row.user_id && !isUpgradeReview) {
-        const newStatus = decision === "approved" ? "approved" : "awaiting_activation";
-        const { error: profileError } = await client
-          .from("profiles")
-          .update({ account_status: newStatus })
-          .eq("id", row.user_id);
-        if (profileError) throw profileError;
-      }
+      if (error) throw error;
 
-      notice(isUpgradeReview
-        ? (decision === "approved" ? "Upgrade FBK submission accepted. The upgrade request has been updated; the member remains approved." : "Upgrade FBK submission rejected. The member remains approved and may submit a corrected code.")
-        : (decision === "approved" ? "Account approved. The member can now sign in to the dashboard." : "Submission rejected. The member can submit a corrected FBK code."), "success");
-      await loadAdminActivationQueue();
-      await loadScholarbrigeAdminPanel();
-    } catch (error) {
-      console.error("FBK review failed:", error);
-      notice("Could not save the decision: " + (error.message || "Check the admin policies and status constraints."), "error");
-    } finally {
-      setButtonLoading(button, false);
+    } else {
+      // New account review: use the secure database RPC.
+      // Do not update profiles directly from JavaScript.
+      const { error } = await client.rpc("scf_review_fbk_activation", {
+        p_submission_id: row.id,
+        p_approve: decision === "approved",
+        p_admin_note: adminNote || null
+      });
+
+      if (error) throw error;
     }
+
+    notice(
+      isUpgradeReview
+        ? (decision === "approved"
+            ? "Upgrade FBK submission accepted. The member remains approved."
+            : "Upgrade FBK submission rejected. The member can submit a corrected code.")
+        : (decision === "approved"
+            ? "Account approved. The member can now sign in to the dashboard."
+            : "Submission rejected. The member can submit a corrected FBK code."),
+      "success"
+    );
+
+    await loadAdminActivationQueue();
+    await loadScholarbrigeAdminPanel();
+
+  } catch (error) {
+    console.error("FBK review failed:", error);
+    notice("Could not save the decision: " + (error.message || "Check the admin RPC and database policies."), "error");
+  } finally {
+    setButtonLoading(button, false);
+  }
   }
 
   async function loadAdminSaleQueue() {
