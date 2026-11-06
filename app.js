@@ -1,4 +1,3 @@
-
 // ==========================================
 // SCHOLARBRIDGE - SUPABASE CONFIGURATION
 // ==========================================
@@ -34,7 +33,10 @@ async function callNotify(event, payload = {}) {
     const { data, error } = await sb.functions.invoke(
       "notify-admin",
       {
-        body: { event, ...payload }
+        body: {
+          event,
+          ...payload
+        }
       }
     );
 
@@ -79,7 +81,7 @@ async function currentApplication() {
 
 
 // ==========================================
-// CHECK EXISTING PROFILE
+// GET EXISTING MEMBER PROFILE
 // ==========================================
 
 async function currentProfile() {
@@ -104,7 +106,7 @@ async function currentProfile() {
 
 
 // ==========================================
-// ROUTE MEMBER ACCORDING TO STATUS
+// ACCOUNT STATUS ROUTING
 // ==========================================
 
 async function goForStatus() {
@@ -113,69 +115,84 @@ async function goForStatus() {
 
     msg("Checking your account...");
 
-    const app = await currentApplication();
+    // FIRST: CHECK THE EXISTING PROFILE.
+    // THIS TAKES PRIORITY FOR OLD MEMBERS.
 
-    // Existing application takes priority.
-    if (app) {
+    const profile = await currentProfile();
 
-      switch (app.status) {
+    if (profile) {
 
-        case "approved":
-          location.replace("dashboard.html");
-          return;
+      const profileStatus =
+        profile.account_status || profile.status;
 
-        case "suspended":
-          location.replace("suspended.html");
-          return;
+      if (
+        profile.account_status === "approved" ||
+        profile.status === "approved"
+      ) {
+        location.replace("dashboard.html");
+        return;
+      }
 
-        case "awaiting_fbk":
-          location.replace("fbk.html");
-          return;
+      if (profileStatus === "suspended") {
+        location.replace("suspended.html");
+        return;
+      }
 
-        case "pending_approval":
-        case "rejected":
-          location.replace("pending.html");
-          return;
+      if (
+        profileStatus === "pending_approval" ||
+        profileStatus === "payment_review"
+      ) {
+        location.replace("pending.html");
+        return;
+      }
+
+      if (profileStatus === "rejected") {
+        location.replace("pending.html");
+        return;
       }
     }
 
-    // Check the existing profile for older members.
-    const profile = await currentProfile();
 
-    const profileStatus =
-      profile?.account_status || profile?.status;
+    // SECOND: CHECK THE NEW APPLICATION TABLE.
 
-    if (profileStatus === "approved") {
-      location.replace("dashboard.html");
-      return;
-    }
+    const app = await currentApplication();
 
-    if (profileStatus === "suspended") {
-      location.replace("suspended.html");
-      return;
-    }
-
-    if (
-      profileStatus === "pending_approval" ||
-      profileStatus === "rejected"
-    ) {
-      location.replace("pending.html");
-      return;
-    }
-
-    // Only members without an approved account
-    // and without an application continue here.
     if (!app) {
       location.replace("level.html");
       return;
     }
 
-    location.replace("level.html");
+    switch (app.status) {
+
+      case "approved":
+        location.replace("dashboard.html");
+        return;
+
+      case "suspended":
+        location.replace("suspended.html");
+        return;
+
+      case "awaiting_fbk":
+        location.replace("fbk.html");
+        return;
+
+      case "pending_approval":
+      case "rejected":
+        location.replace("pending.html");
+        return;
+
+      default:
+        location.replace("level.html");
+        return;
+    }
 
   } catch (error) {
 
-    console.error("Account status error:", error);
-    msg("Unable to check your account. Please try again.");
+    console.error("Account routing error:", error);
+
+    msg(
+      "Unable to check your account. Please refresh and try again."
+    );
 
   }
 }
@@ -195,7 +212,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
   // ========================================
-  // SWITCH TO SIGN IN
+  // SHOW SIGN IN
   // ========================================
 
   function showLogin() {
@@ -211,7 +228,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
   // ========================================
-  // SWITCH TO CREATE ACCOUNT
+  // SHOW CREATE ACCOUNT
   // ========================================
 
   function showRegister() {
@@ -227,6 +244,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
   loginTab?.addEventListener("click", showLogin);
+
   registerTab?.addEventListener("click", showRegister);
 
   $("register-login-link")?.addEventListener("click", (e) => {
@@ -241,7 +259,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
   // ========================================
-  // AUTOMATIC CHECK FOR ALREADY SIGNED-IN USERS
+  // AUTOMATIC REDIRECT FOR SIGNED-IN MEMBERS
   // ========================================
 
   if (registerForm || loginForm) {
@@ -263,7 +281,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
   // ========================================
-  // MEMBER REGISTRATION
+  // CREATE NEW MEMBER ACCOUNT
   // ========================================
 
   registerForm?.addEventListener("submit", async (e) => {
@@ -282,7 +300,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     if (password.length < 8) {
-      msg("Your password must contain at least 8 characters.");
+      msg("Password must contain at least 8 characters.");
       return;
     }
 
@@ -307,8 +325,8 @@ document.addEventListener("DOMContentLoaded", () => {
         options: {
           data: {
             full_name: name,
-            whatsapp,
-            country
+            whatsapp: whatsapp,
+            country: country
           }
         }
 
@@ -320,24 +338,27 @@ document.addEventListener("DOMContentLoaded", () => {
         throw new Error("Account creation could not be completed.");
       }
 
+      // EMAIL CONFIRMATION REQUIRED
+
       if (!data.session) {
 
         msg(
-          "Account created. Please confirm your email, then sign in."
+          "Account created successfully. Confirm your email, then sign in."
         );
 
         showLogin();
         return;
       }
 
-      msg("Registration successful. Taking you to level selection...");
+      // NEW MEMBERS START THE APPLICATION PROCESS.
 
       location.replace("level.html");
 
     } catch (error) {
 
       console.error(error);
-      msg(error.message || "Registration failed. Please try again.");
+
+      msg(error.message || "Registration failed.");
 
     } finally {
 
@@ -352,7 +373,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
   // ========================================
-  // MEMBER LOGIN
+  // MEMBER SIGN IN
   // ========================================
 
   loginForm?.addEventListener("submit", async (e) => {
@@ -376,8 +397,10 @@ document.addEventListener("DOMContentLoaded", () => {
     try {
 
       const { error } = await sb.auth.signInWithPassword({
+
         email,
         password
+
       });
 
       if (error) throw error;
@@ -387,6 +410,7 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch (error) {
 
       console.error(error);
+
       msg(error.message || "Sign in failed. Please try again.");
 
     } finally {
@@ -401,4 +425,4 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
 });
-      
+          
