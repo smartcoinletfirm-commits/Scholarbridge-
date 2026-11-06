@@ -1,185 +1,300 @@
 
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Scholarbridge Admin Centre</title>
+let all = [];
+let activeFilter = "all";
 
-  <link rel="stylesheet" href="style.css">
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script defer src="app.js"></script>
-  <script defer src="admin.js"></script>
+const el = id => document.getElementById(id);
 
-  <style>
-    .admin-header {
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-      flex-wrap:wrap;
-      gap:14px;
+function adminMessage(message) {
+  if (el("message")) el("message").textContent = message;
+}
+
+
+// ==========================================
+// VERIFY ADMIN USING EXISTING PROFILES TABLE
+// ==========================================
+
+async function verifyAdmin() {
+  const { data: { user }, error: authError } = await sb.auth.getUser();
+
+  if (authError || !user) {
+    location.replace("index.html");
+    return false;
+  }
+
+  const { data: profile, error } = await sb
+    .from("profiles")
+    .select("id, role, account_status")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error("Could not verify administrator: " + error.message);
+  }
+
+  if (!profile || profile.role !== "admin") {
+    adminMessage("Administrator access required.");
+    return false;
+  }
+
+  return true;
+}
+
+
+// ==========================================
+// LOAD APPLICATIONS
+// ==========================================
+
+async function adminLoad() {
+  const host = el("applications");
+
+  if (host) host.textContent = "Loading applications...";
+  adminMessage("Checking administrator access...");
+
+  try {
+    const allowed = await verifyAdmin();
+
+    if (!allowed) return;
+
+    const { data, error } = await sb
+      .from("scholarbridge_applications")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+
+    all = data || [];
+
+    updateStatistics();
+    render();
+
+    adminMessage("Applications loaded successfully.");
+
+  } catch (error) {
+    console.error("Admin loading error:", error);
+    adminMessage(error.message);
+  }
+}
+
+
+// ==========================================
+// STATISTICS
+// ==========================================
+
+function updateStatistics() {
+  const count = status =>
+    all.filter(a => a.status === status).length;
+
+  if (el("stat-total")) {
+    el("stat-total").textContent = all.length;
+  }
+
+  if (el("stat-pending")) {
+    el("stat-pending").textContent = count("pending_approval");
+  }
+
+  if (el("stat-approved")) {
+    el("stat-approved").textContent = count("approved");
+  }
+
+  if (el("stat-suspended")) {
+    el("stat-suspended").textContent = count("suspended");
+  }
+}
+
+
+// ==========================================
+// RENDER APPLICATIONS
+// ==========================================
+
+function render() {
+  const host = el("applications");
+  if (!host) return;
+
+  host.replaceChildren();
+
+  const query = (el("search")?.value || "").toLowerCase();
+
+  const filtered = all.filter(a => {
+    const matchesSearch = [
+      a.full_name,
+      a.phone,
+      a.fbk_number,
+      a.status,
+      a.level
+    ].join(" ").toLowerCase().includes(query);
+
+    const matchesFilter =
+      activeFilter === "all" || a.status === activeFilter;
+
+    return matchesSearch && matchesFilter;
+  });
+
+  if (!filtered.length) {
+    const empty = document.createElement("div");
+    empty.className = "admin-empty";
+    empty.textContent = "No matching applications found.";
+    host.appendChild(empty);
+    return;
+  }
+
+  filtered.forEach(a => {
+    const row = document.createElement("article");
+    row.className = "admin-row";
+
+    const details = document.createElement("div");
+
+    const name = document.createElement("h3");
+    name.textContent = a.full_name || "Unnamed member";
+
+    const phone = document.createElement("p");
+    phone.textContent = "Phone: " + (a.phone || "Not provided");
+
+    const level = document.createElement("p");
+    level.textContent = "Member level: " + (a.level ?? "—");
+
+    const fbk = document.createElement("p");
+    fbk.textContent = "FBK number: " + (a.fbk_number || "—");
+
+    const status = document.createElement("span");
+    status.className = "admin-status";
+    status.textContent = (a.status || "unknown").replaceAll("_", " ").toUpperCase();
+
+    details.append(name, phone, level, fbk, status);
+
+    const actions = document.createElement("div");
+    actions.className = "admin-row-actions";
+
+    if (a.status !== "approved") {
+      addAction(actions, "Approve", () => changeStatus(a, "approved"));
     }
-    .admin-grid {
-      display:grid;
-      grid-template-columns:repeat(4,minmax(0,1fr));
-      gap:12px;
-      margin:22px 0;
+
+    if (a.status !== "awaiting_fbk") {
+      addAction(actions, "Return to FBK", () => changeStatus(a, "awaiting_fbk"));
     }
-    .admin-stat {
-      padding:17px;
-      border:1px solid var(--border,#ddd);
-      border-radius:13px;
-      background:var(--card,#fff);
+
+    if (a.status !== "suspended") {
+      addAction(actions, "Suspend", () => changeStatus(a, "suspended"), true);
+    } else {
+      addAction(actions, "Restore", () => changeStatus(a, "approved"));
     }
-    .admin-stat strong {
-      display:block;
-      font-size:27px;
-      margin-top:9px;
+
+    row.append(details, actions);
+    host.appendChild(row);
+  });
+}
+
+
+function addAction(host, label, callback, danger = false) {
+  const button = document.createElement("button");
+
+  button.type = "button";
+  button.className = danger ? "secondary admin-danger" : "secondary";
+  button.textContent = label;
+  button.addEventListener("click", callback);
+
+  host.appendChild(button);
+}
+
+
+// ==========================================
+// CHANGE APPLICATION AND PROFILE STATUS
+// ==========================================
+
+async function changeStatus(application, newStatus) {
+  let reason = "";
+
+  if (newStatus === "awaiting_fbk" || newStatus === "suspended") {
+    reason = prompt(
+      newStatus === "suspended"
+        ? "Enter the reason for suspension:"
+        : "Enter the reason for returning this application to FBK:"
+    ) || "";
+
+    if (!reason.trim()) return;
+  }
+
+  const confirmation = confirm(
+    "Are you sure you want to change this application to " +
+    newStatus.replaceAll("_", " ") + "?"
+  );
+
+  if (!confirmation) return;
+
+  adminMessage("Updating member account...");
+
+  try {
+    const { data: { user }, error: authError } = await sb.auth.getUser();
+
+    if (authError || !user) {
+      throw new Error("Your administrator session has expired.");
     }
-    .admin-actions,.admin-filters {
-      display:flex;
-      flex-wrap:wrap;
-      gap:9px;
-      align-items:center;
+
+    // Update the application.
+    const applicationUpdate = {
+      status: newStatus,
+      rejection_reason:
+        newStatus === "awaiting_fbk" ? reason : null,
+      updated_at: new Date().toISOString()
+    };
+
+    const { error: applicationError } = await sb
+      .from("scholarbridge_applications")
+      .update(applicationUpdate)
+      .eq("id", application.id);
+
+    if (applicationError) throw applicationError;
+
+    // Keep the profile status consistent with application routing.
+    const profileStatus = {
+      approved: "approved",
+      suspended: "suspended",
+      awaiting_fbk: "awaiting_activation"
+    }[newStatus];
+
+    const { error: profileError } = await sb
+      .from("profiles")
+      .update({ account_status: profileStatus })
+      .eq("id", application.user_id);
+
+    if (profileError) {
+      throw new Error(
+        "Application updated, but profile status could not be updated: " +
+        profileError.message
+      );
     }
-    .admin-filters button.active {
-      background:#075b46;
-      color:white;
-    }
-    .admin-row {
-      display:grid;
-      grid-template-columns:minmax(0,1fr) auto;
-      gap:14px;
-      padding:17px 0;
-      border-bottom:1px solid var(--border,#ddd);
-    }
-    .admin-row h3 {margin:0 0 7px;font-size:16px}
-    .admin-row p {margin:5px 0;font-size:13px}
-    .admin-row-actions {
-      display:flex;
-      flex-wrap:wrap;
-      gap:7px;
-      align-items:center;
-    }
-    .admin-row-actions button {
-      padding:8px 11px;
-      font-size:12px;
-    }
-    .admin-toolbar {
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-      flex-wrap:wrap;
-      gap:12px;
-      margin:18px 0;
-    }
-    .admin-toolbar input {
-      flex:1;
-      min-width:180px;
-    }
-    .admin-status {
-      display:inline-block;
-      padding:5px 9px;
-      border-radius:20px;
-      background:#e8eee9;
-      color:#245b40;
-      font-size:11px;
-      font-weight:700;
-    }
-    .admin-empty {
-      padding:30px 10px;
-      text-align:center;
-      color:#777;
-    }
-    .admin-danger {
-      background:#922f2f!important;
-      color:white!important;
-    }
-    @media(max-width:650px) {
-      .admin-grid {grid-template-columns:repeat(2,minmax(0,1fr))}
-      .admin-row {grid-template-columns:1fr}
-      .admin-row-actions button {flex:1}
-    }
-  </style>
-</head>
 
-<body>
-<main class="layout">
+    adminMessage("Member account updated successfully.");
 
-  <header class="admin-header">
-    <a class="brand" href="index.html">✦ SCHOLARBRIDGE</a>
+    await adminLoad();
 
-    <div class="admin-actions">
-      <span class="status">ADMIN CONSOLE</span>
-      <button type="button" class="secondary" data-signout>
-        Sign Out
-      </button>
-    </div>
-  </header>
+  } catch (error) {
+    console.error("Status update error:", error);
+    adminMessage(error.message);
+  }
+}
 
-  <section class="panel" style="margin-top:22px">
 
-    <h1>Administration Centre</h1>
-    <p class="muted">Manage applications and member account approvals.</p>
+// ==========================================
+// FILTERS, SEARCH AND REFRESH
+// ==========================================
 
-    <div class="admin-grid">
+document.addEventListener("DOMContentLoaded", () => {
 
-      <div class="admin-stat">
-        <span class="muted">Total applications</span>
-        <strong id="stat-total">—</strong>
-      </div>
+  el("search")?.addEventListener("input", render);
 
-      <div class="admin-stat">
-        <span class="muted">Awaiting review</span>
-        <strong id="stat-pending">—</strong>
-      </div>
+  el("refresh")?.addEventListener("click", adminLoad);
 
-      <div class="admin-stat">
-        <span class="muted">Approved</span>
-        <strong id="stat-approved">—</strong>
-      </div>
+  document.querySelectorAll("[data-filter]").forEach(button => {
+    button.addEventListener("click", () => {
+      activeFilter = button.dataset.filter;
 
-      <div class="admin-stat">
-        <span class="muted">Suspended</span>
-        <strong id="stat-suspended">—</strong>
-      </div>
+      document.querySelectorAll("[data-filter]").forEach(item => {
+        item.classList.toggle("active", item === button);
+      });
 
-    </div>
+      render();
+    });
+  });
 
-    <div class="admin-toolbar">
-      <h2>Member applications</h2>
-      <button type="button" class="secondary" id="refresh">
-        ↻ Refresh
-      </button>
-    </div>
-
-    <input
-      id="search"
-      type="search"
-      placeholder="Search name, phone, FBK number or status">
-
-    <div class="admin-filters" style="margin:17px 0">
-      <button type="button" class="secondary active" data-filter="all">All</button>
-      <button type="button" class="secondary" data-filter="pending_approval">Pending</button>
-      <button type="button" class="secondary" data-filter="approved">Approved</button>
-      <button type="button" class="secondary" data-filter="awaiting_fbk">Awaiting FBK</button>
-      <button type="button" class="secondary" data-filter="suspended">Suspended</button>
-      <button type="button" class="secondary" data-filter="rejected">Rejected</button>
-    </div>
-
-    <p id="message" class="message" aria-live="polite"></p>
-
-    <div id="applications">
-      <div class="admin-empty">Loading applications...</div>
-    </div>
-
-  </section>
-
-  <footer style="text-align:center;padding:20px">
-    <p class="muted">Scholarbridge Administration</p>
-  </footer>
-
-</main>
-</body>
-</html>
-                                   
+  adminLoad();
+});
