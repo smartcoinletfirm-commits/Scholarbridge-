@@ -4,6 +4,12 @@ let activeFilter = "all";
 let adminVerified = false;
 let loading = false;
 
+// Existing authorized administrator emails
+const ADMIN_EMAILS = [
+  "amosi254@gmail.com",
+  "testtwo450@gmail.com"
+];
+
 const el = id => document.getElementById(id);
 
 function adminMessage(message) {
@@ -14,32 +20,41 @@ function adminMessage(message) {
 
 
 // ==========================================
-// VERIFY ADMIN USING ADMINISTRATORS TABLE
+// ADMIN VERIFICATION
+// Uses existing profiles table
 // ==========================================
 
 async function verifyAdmin() {
-
-  const { data: { user }, error: authError } =
-    await sb.auth.getUser();
+  const {
+    data: { user },
+    error: authError
+  } = await sb.auth.getUser();
 
   if (authError || !user) {
     location.replace("index.html");
     return false;
   }
 
-  const { data: allowed, error } = await sb
-    .from("scholarbridge_admins")
-    .select("user_id")
-    .eq("user_id", user.id)
+  const email = (user.email || "").toLowerCase();
+
+  const emailAllowed = ADMIN_EMAILS.includes(email);
+
+  const { data: profile, error } = await sb
+    .from("profiles")
+    .select("id, email, role")
+    .eq("id", user.id)
     .maybeSingle();
 
-  if (error) {
+  if (error && !emailAllowed) {
     throw new Error(
       "Could not verify administrator: " + error.message
     );
   }
 
-  if (!allowed) {
+  const roleAllowed =
+    profile?.role?.toLowerCase() === "admin";
+
+  if (!emailAllowed && !roleAllowed) {
     adminMessage("Administrator access required.");
 
     await sb.auth.signOut({ scope: "local" });
@@ -54,12 +69,10 @@ async function verifyAdmin() {
 
 
 // ==========================================
-// ADMIN SIGN OUT
-// RETURN TO PUBLIC WELCOME PAGE
+// SIGN OUT
 // ==========================================
 
 async function adminSignOut() {
-
   const button =
     el("logout-btn") ||
     el("sign-out-btn") ||
@@ -73,23 +86,18 @@ async function adminSignOut() {
   adminVerified = false;
 
   try {
-
     const { error } = await sb.auth.signOut({
       scope: "local"
     });
 
     if (error) throw error;
 
-    // Return to the public welcome page.
-    window.location.replace("index.html");
+    location.replace("index.html");
 
   } catch (error) {
+    console.error(error);
 
-    console.error("Admin sign-out error:", error);
-
-    adminMessage(
-      "Sign out failed: " + error.message
-    );
+    adminMessage("Sign out failed: " + error.message);
 
     if (button) {
       button.disabled = false;
@@ -100,11 +108,24 @@ async function adminSignOut() {
 
 
 // ==========================================
-// LOAD APPLICATIONS
+// STATUS HELPER
+// ==========================================
+
+function memberStatus(member) {
+  return (
+    member.application?.status ||
+    member.account_status ||
+    "unknown"
+  );
+}
+
+
+// ==========================================
+// LOAD ALL MEMBERS
+// PROFILES IS THE MAIN SOURCE
 // ==========================================
 
 async function adminLoad() {
-
   if (loading) return;
 
   loading = true;
@@ -112,36 +133,74 @@ async function adminLoad() {
   const host = el("applications");
 
   if (host) {
-    host.textContent = "Loading applications...";
+    host.textContent = "Loading members...";
   }
 
-  adminMessage("Checking administrator access...");
+  adminMessage("Verifying administrator...");
 
   try {
-
     const allowed = await verifyAdmin();
 
     if (!allowed) return;
 
-    const { data, error } = await sb
-      .from("scholarbridge_applications")
+    // Load every member profile.
+    const { data: profiles, error: profileError } = await sb
+      .from("profiles")
       .select("*")
       .order("created_at", { ascending: false });
 
-    if (error) throw error;
+    if (profileError) throw profileError;
 
-    all = data || [];
+    // Load available applications separately.
+    const { data: applications, error: applicationError } =
+      await sb
+        .from("scholarbridge_applications")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+    if (applicationError) throw applicationError;
+
+    // Match applications to profiles using user_id.
+    const applicationMap = new Map();
+
+    (applications || []).forEach(application => {
+      if (!applicationMap.has(application.user_id)) {
+        applicationMap.set(
+          application.user_id,
+          application
+        );
+      }
+    });
+
+    // Every non-admin profile appears, even without an application.
+    all = (profiles || [])
+      .filter(profile =>
+        (profile.role || "").toLowerCase() !== "admin"
+      )
+      .map(profile => ({
+        ...profile,
+        application:
+          applicationMap.get(profile.id) || null
+      }));
 
     updateStatistics();
     render();
 
-    adminMessage("Applications loaded successfully.");
+    adminMessage(
+      `${all.length} registered members loaded successfully.`
+    );
 
   } catch (error) {
-
     console.error("Admin loading error:", error);
 
-    adminMessage(error.message);
+    adminMessage(
+      "Unable to load members: " + error.message
+    );
+
+    if (host) {
+      host.textContent =
+        "Could not load members. Check administrator permissions and database policies.";
+    }
 
   } finally {
     loading = false;
@@ -154,9 +213,10 @@ async function adminLoad() {
 // ==========================================
 
 function updateStatistics() {
-
   const count = status =>
-    all.filter(a => a.status === status).length;
+    all.filter(member =>
+      memberStatus(member) === status
+    ).length;
 
   if (el("stat-total")) {
     el("stat-total").textContent = all.length;
@@ -164,7 +224,13 @@ function updateStatistics() {
 
   if (el("stat-pending")) {
     el("stat-pending").textContent =
-      count("pending_approval");
+      all.filter(member =>
+        [
+          "pending_approval",
+          "awaiting_activation",
+          "awaiting_fbk"
+        ].includes(memberStatus(member))
+      ).length;
   }
 
   if (el("stat-approved")) {
@@ -180,11 +246,10 @@ function updateStatistics() {
 
 
 // ==========================================
-// RENDER APPLICATIONS
+// RENDER ALL MEMBERS
 // ==========================================
 
 function render() {
-
   if (!adminVerified) return;
 
   const host = el("applications");
@@ -197,124 +262,142 @@ function render() {
     el("search")?.value || ""
   ).toLowerCase();
 
-  const filtered = all.filter(a => {
+  const filtered = all.filter(member => {
+    const application = member.application || {};
 
-    const matchesSearch = [
-      a.full_name,
-      a.phone,
-      a.fbk_number,
-      a.status,
-      a.level
-    ]
-      .join(" ")
-      .toLowerCase()
-      .includes(query);
+    const searchText = [
+      member.full_name,
+      member.username,
+      member.email,
+      member.phone,
+      member.country,
+      member.id,
+      application.fbk_number,
+      application.level,
+      memberStatus(member)
+    ].join(" ").toLowerCase();
+
+    const matchesSearch = searchText.includes(query);
+
+    const status = memberStatus(member);
 
     const matchesFilter =
       activeFilter === "all" ||
-      a.status === activeFilter;
+      (
+        activeFilter === "pending_approval"
+          ? [
+              "pending_approval",
+              "awaiting_activation",
+              "awaiting_fbk"
+            ].includes(status)
+          : status === activeFilter
+      );
 
     return matchesSearch && matchesFilter;
   });
 
   if (!filtered.length) {
-
     const empty = document.createElement("div");
 
     empty.className = "admin-empty";
-    empty.textContent = "No matching applications found.";
+    empty.textContent = "No matching members found.";
 
     host.appendChild(empty);
-
     return;
   }
 
-  filtered.forEach(a => {
+  filtered.forEach(member => {
+    const application = member.application || {};
 
     const row = document.createElement("article");
-
     row.className = "admin-row";
 
     const details = document.createElement("div");
 
     const name = document.createElement("h3");
-
     name.textContent =
-      a.full_name || "Unnamed member";
+      member.full_name || member.username || "Unnamed member";
+
+    const email = document.createElement("p");
+    email.textContent =
+      "Email: " + (member.email || "Not provided");
 
     const phone = document.createElement("p");
-
     phone.textContent =
-      "Phone: " + (a.phone || "Not provided");
+      "Phone: " +
+      (application.phone || member.phone || "Not provided");
 
     const level = document.createElement("p");
-
     level.textContent =
-      "Member level: " + (a.level ?? "—");
+      "Member level: " +
+      (application.level ?? "Not submitted");
 
     const fbk = document.createElement("p");
-
     fbk.textContent =
-      "FBK number: " + (a.fbk_number || "—");
+      "FBK number: " +
+      (application.fbk_number || "Not submitted");
+
+    const registered = document.createElement("p");
+    registered.textContent =
+      "Registered: " +
+      (
+        member.created_at
+          ? new Date(member.created_at).toLocaleString()
+          : "Unknown"
+      );
 
     const status = document.createElement("span");
-
     status.className = "admin-status";
-
-    status.textContent = (
-      a.status || "unknown"
-    ).replaceAll("_", " ").toUpperCase();
+    status.textContent =
+      memberStatus(member).replaceAll("_", " ").toUpperCase();
 
     details.append(
       name,
+      email,
       phone,
       level,
       fbk,
+      registered,
       status
     );
 
     const actions = document.createElement("div");
-
     actions.className = "admin-row-actions";
 
-    if (a.status !== "approved") {
+    const currentStatus = memberStatus(member);
 
-      addAction(
-        actions,
-        "Approve",
-        () => changeStatus(a, "approved")
+    if (currentStatus !== "approved") {
+      addAction(actions, "Approve", () =>
+        changeStatus(member, "approved")
       );
     }
 
-    if (a.status !== "awaiting_fbk") {
-
-      addAction(
-        actions,
-        "Return to FBK",
-        () => changeStatus(a, "awaiting_fbk")
+    if (currentStatus !== "rejected") {
+      addAction(actions, "Reject", () =>
+        changeStatus(member, "rejected"), true
       );
     }
 
-    if (a.status !== "suspended") {
-
-      addAction(
-        actions,
-        "Suspend",
-        () => changeStatus(a, "suspended"),
-        true
+    if (
+      application.id &&
+      currentStatus !== "awaiting_fbk"
+    ) {
+      addAction(actions, "Return to FBK", () =>
+        changeStatus(member, "awaiting_fbk")
       );
+    }
 
+    if (currentStatus !== "suspended") {
+      addAction(actions, "Suspend", () =>
+        changeStatus(member, "suspended"), true
+      );
     } else {
-
-      addAction(
-        actions,
-        "Restore",
-        () => changeStatus(a, "approved")
+      addAction(actions, "Restore", () =>
+        changeStatus(member, "approved")
       );
     }
 
     row.append(details, actions);
-
     host.appendChild(row);
   });
 }
@@ -324,13 +407,7 @@ function render() {
 // ACTION BUTTON CREATOR
 // ==========================================
 
-function addAction(
-  host,
-  label,
-  callback,
-  danger = false
-) {
-
+function addAction(host, label, callback, danger = false) {
   const button = document.createElement("button");
 
   button.type = "button";
@@ -348,71 +425,76 @@ function addAction(
 
 
 // ==========================================
-// CHANGE APPLICATION AND PROFILE STATUS
+// UPDATE MEMBER STATUS
+// UPDATES APPLICATION WHEN ONE EXISTS
+// ALWAYS SYNCHRONIZES PROFILE
 // ==========================================
 
-async function changeStatus(application, newStatus) {
-
+async function changeStatus(member, newStatus) {
   if (!adminVerified) {
     adminMessage("Administrator access required.");
+    return;
+  }
+
+  const application = member.application;
+
+  if (newStatus === "awaiting_fbk" && !application?.id) {
+    adminMessage(
+      "This member has no application to return to FBK."
+    );
     return;
   }
 
   let reason = "";
 
   if (
+    newStatus === "rejected" ||
     newStatus === "awaiting_fbk" ||
     newStatus === "suspended"
   ) {
-
     reason = prompt(
-      newStatus === "suspended"
-        ? "Enter the reason for suspension:"
-        : "Enter the reason for returning this application to FBK:"
+      "Enter the reason for this action:"
     ) || "";
 
     if (!reason.trim()) return;
   }
 
-  const confirmation = confirm(
-    "Are you sure you want to change this application to " +
+  if (!confirm(
+    "Confirm changing this member's status to " +
     newStatus.replaceAll("_", " ") + "?"
-  );
-
-  if (!confirmation) return;
+  )) return;
 
   adminMessage("Updating member account...");
 
   try {
-
-    // Recheck admin authorization.
-
     const allowed = await verifyAdmin();
 
     if (!allowed) return;
 
-    // Update application.
+    // Update application only if it exists.
+    if (application?.id) {
+      const applicationUpdate = {
+        status: newStatus,
+        rejection_reason:
+          ["rejected", "awaiting_fbk", "suspended"]
+            .includes(newStatus)
+            ? reason.trim()
+            : null,
+        updated_at: new Date().toISOString()
+      };
 
-    const applicationUpdate = {
-      status: newStatus,
-      rejection_reason:
-        newStatus === "awaiting_fbk" ? reason : null,
-      updated_at: new Date().toISOString()
-    };
+      const { error } = await sb
+        .from("scholarbridge_applications")
+        .update(applicationUpdate)
+        .eq("id", application.id);
 
-    const { error: applicationError } = await sb
-      .from("scholarbridge_applications")
-      .update(applicationUpdate)
-      .eq("id", application.id);
-
-    if (applicationError) {
-      throw applicationError;
+      if (error) throw error;
     }
 
-    // Synchronize member profile.
-
+    // Update the main member profile.
     const profileStatus = {
       approved: "approved",
+      rejected: "rejected",
       suspended: "suspended",
       awaiting_fbk: "awaiting_activation"
     }[newStatus];
@@ -420,40 +502,32 @@ async function changeStatus(application, newStatus) {
     const { error: profileError } = await sb
       .from("profiles")
       .update({
-        account_status: profileStatus
+        account_status: profileStatus,
+        updated_at: new Date().toISOString()
       })
-      .eq("id", application.user_id);
+      .eq("id", member.id);
 
-    if (profileError) {
+    if (profileError) throw profileError;
 
-      throw new Error(
-        "Application updated, but profile status could not be updated: " +
-        profileError.message
-      );
-    }
-
-    adminMessage(
-      "Member account updated successfully."
-    );
+    adminMessage("Member account updated successfully.");
 
     await adminLoad();
 
   } catch (error) {
-
     console.error("Status update error:", error);
 
-    adminMessage(error.message);
+    adminMessage(
+      "Could not update member: " + error.message
+    );
   }
 }
 
 
 // ==========================================
-// FILTERS, SEARCH, REFRESH AND SIGN OUT
+// EVENT LISTENERS
 // ==========================================
 
 document.addEventListener("DOMContentLoaded", () => {
-
-  // SIGN OUT
 
   const logoutButton =
     el("logout-btn") ||
@@ -465,35 +539,23 @@ document.addEventListener("DOMContentLoaded", () => {
     adminSignOut
   );
 
-
-  // SEARCH
-
   el("search")?.addEventListener(
     "input",
     render
   );
-
-
-  // REFRESH
 
   el("refresh")?.addEventListener(
     "click",
     adminLoad
   );
 
-
-  // FILTERS
-
   document.querySelectorAll("[data-filter]")
     .forEach(button => {
-
       button.addEventListener("click", () => {
-
         activeFilter = button.dataset.filter;
 
         document.querySelectorAll("[data-filter]")
           .forEach(item => {
-
             item.classList.toggle(
               "active",
               item === button
@@ -504,10 +566,6 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     });
 
-
-  // INITIAL ADMIN LOAD
-
   adminLoad();
-
 });
-                         
+      
