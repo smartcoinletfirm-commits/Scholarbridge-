@@ -1,3 +1,4 @@
+
 // ==========================================
 // SCHOLARBRIDGE - SUPABASE CONFIGURATION
 // ==========================================
@@ -33,10 +34,7 @@ async function callNotify(event, payload = {}) {
     const { data, error } = await sb.functions.invoke(
       "notify-admin",
       {
-        body: {
-          event,
-          ...payload
-        }
+        body: { event, ...payload }
       }
     );
 
@@ -54,7 +52,7 @@ async function callNotify(event, payload = {}) {
 
 
 // ==========================================
-// GET CURRENT MEMBER APPLICATION
+// GET CURRENT APPLICATION
 // ==========================================
 
 async function currentApplication() {
@@ -64,9 +62,7 @@ async function currentApplication() {
     error: authError
   } = await sb.auth.getUser();
 
-  if (authError || !user) {
-    return null;
-  }
+  if (authError || !user) return null;
 
   const { data, error } = await sb
     .from("scholarbridge_applications")
@@ -76,16 +72,39 @@ async function currentApplication() {
     .limit(1)
     .maybeSingle();
 
-  if (error) {
-    throw error;
-  }
+  if (error) throw error;
 
   return data;
 }
 
 
 // ==========================================
-// DIRECT MEMBER TO CORRECT PAGE
+// CHECK EXISTING PROFILE
+// ==========================================
+
+async function currentProfile() {
+
+  const {
+    data: { user },
+    error: authError
+  } = await sb.auth.getUser();
+
+  if (authError || !user) return null;
+
+  const { data, error } = await sb
+    .from("profiles")
+    .select("status, account_status")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (error) throw error;
+
+  return data;
+}
+
+
+// ==========================================
+// ROUTE MEMBER ACCORDING TO STATUS
 // ==========================================
 
 async function goForStatus() {
@@ -96,39 +115,66 @@ async function goForStatus() {
 
     const app = await currentApplication();
 
-    // Member has registered but has not selected a level.
-    if (!app) {
-      location.href = "level.html";
+    // Existing application takes priority.
+    if (app) {
+
+      switch (app.status) {
+
+        case "approved":
+          location.replace("dashboard.html");
+          return;
+
+        case "suspended":
+          location.replace("suspended.html");
+          return;
+
+        case "awaiting_fbk":
+          location.replace("fbk.html");
+          return;
+
+        case "pending_approval":
+        case "rejected":
+          location.replace("pending.html");
+          return;
+      }
+    }
+
+    // Check the existing profile for older members.
+    const profile = await currentProfile();
+
+    const profileStatus =
+      profile?.account_status || profile?.status;
+
+    if (profileStatus === "approved") {
+      location.replace("dashboard.html");
       return;
     }
 
-    switch (app.status) {
-
-      case "approved":
-        location.href = "dashboard.html";
-        break;
-
-      case "suspended":
-        location.href = "suspended.html";
-        break;
-
-      case "awaiting_fbk":
-        location.href = "fbk.html";
-        break;
-
-      case "pending_approval":
-      case "rejected":
-        location.href = "pending.html";
-        break;
-
-      default:
-        location.href = "level.html";
-        break;
+    if (profileStatus === "suspended") {
+      location.replace("suspended.html");
+      return;
     }
+
+    if (
+      profileStatus === "pending_approval" ||
+      profileStatus === "rejected"
+    ) {
+      location.replace("pending.html");
+      return;
+    }
+
+    // Only members without an approved account
+    // and without an application continue here.
+    if (!app) {
+      location.replace("level.html");
+      return;
+    }
+
+    location.replace("level.html");
 
   } catch (error) {
 
-    console.error(error);
+    console.error("Account status error:", error);
     msg("Unable to check your account. Please try again.");
 
   }
@@ -140,8 +186,6 @@ async function goForStatus() {
 // ==========================================
 
 document.addEventListener("DOMContentLoaded", () => {
-
-  // CREATE ACCOUNT IS THE DEFAULT FIRST SCREEN.
 
   const registerForm = $("register-form");
   const loginForm = $("login-form");
@@ -183,7 +227,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
   loginTab?.addEventListener("click", showLogin);
-
   registerTab?.addEventListener("click", showRegister);
 
   $("register-login-link")?.addEventListener("click", (e) => {
@@ -195,6 +238,28 @@ document.addEventListener("DOMContentLoaded", () => {
     e.preventDefault();
     showRegister();
   });
+
+
+  // ========================================
+  // AUTOMATIC CHECK FOR ALREADY SIGNED-IN USERS
+  // ========================================
+
+  if (registerForm || loginForm) {
+
+    sb.auth.getSession().then(({ data, error }) => {
+
+      if (error) {
+        console.error(error);
+        return;
+      }
+
+      if (data.session) {
+        goForStatus();
+      }
+
+    });
+
+  }
 
 
   // ========================================
@@ -242,36 +307,32 @@ document.addEventListener("DOMContentLoaded", () => {
         options: {
           data: {
             full_name: name,
-            whatsapp: whatsapp,
-            country: country
+            whatsapp,
+            country
           }
         }
 
       });
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
 
       if (!data.user) {
         throw new Error("Account creation could not be completed.");
       }
 
-      // Email confirmation may be required by Supabase.
       if (!data.session) {
 
         msg(
-          "Your account has been created. Please confirm your email, then sign in."
+          "Account created. Please confirm your email, then sign in."
         );
 
         showLogin();
-
         return;
       }
 
       msg("Registration successful. Taking you to level selection...");
 
-      location.href = "level.html";
+      location.replace("level.html");
 
     } catch (error) {
 
@@ -315,15 +376,11 @@ document.addEventListener("DOMContentLoaded", () => {
     try {
 
       const { error } = await sb.auth.signInWithPassword({
-
         email,
         password
-
       });
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
 
       await goForStatus();
 
@@ -344,3 +401,4 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
 });
+      
