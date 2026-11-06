@@ -1,10 +1,8 @@
-
 // ==========================================
 // SCHOLARBRIDGE - SUPABASE CONFIGURATION
 // ==========================================
 
 const SUPABASE_URL = "https://vulbvlardmvvxdhqyopn.supabase.co";
-
 const SUPABASE_ANON_KEY = "sb_publishable_hve5CvGEO3tyocvupHOv9w_zEVEaN9a";
 
 const sb = window.supabase.createClient(
@@ -33,17 +31,12 @@ async function callNotify(event, payload = {}) {
   try {
     const { data, error } = await sb.functions.invoke(
       "notify-admin",
-      {
-        body: { event, ...payload }
-      }
+      { body: { event, ...payload } }
     );
 
-    if (error) {
-      console.warn("Notification failed:", error.message);
-    }
+    if (error) console.warn("Notification failed:", error.message);
 
     return { data, error };
-
   } catch (error) {
     console.warn("Notification error:", error);
     return { data: null, error };
@@ -67,7 +60,6 @@ async function getCurrentUser() {
 
 // ==========================================
 // GET PROFILE
-// USE ONLY REAL EXISTING COLUMNS
 // ==========================================
 
 async function currentProfile() {
@@ -114,20 +106,17 @@ async function goForStatus() {
   try {
     msg("Checking your account...");
 
-    // FIRST: CHECK THE EXISTING PROFILE.
-
     const profile = await currentProfile();
 
-    if (profile) {
+    // ADMIN REDIRECT ONLY AFTER EXPLICIT SIGN-IN.
+    // PUBLIC PAGE LOADS NO LONGER AUTO-REDIRECT ADMINS.
 
-      // ADMIN ALWAYS GOES TO ADMIN DASHBOARD.
+    if (profile) {
 
       if (profile.role === "admin") {
         location.replace("admin.html");
         return;
       }
-
-      // APPROVED MEMBERS GO DIRECTLY TO DASHBOARD.
 
       if (profile.account_status === "approved") {
         location.replace("dashboard.html");
@@ -152,9 +141,6 @@ async function goForStatus() {
         return;
       }
     }
-
-    // SECOND: CHECK APPLICATION IF PROFILE
-    // DOES NOT ALREADY DETERMINE DESTINATION.
 
     const app = await currentApplication();
 
@@ -207,8 +193,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const loginTab = $("show-login");
 
 
-  // SHOW LOGIN
-
   function showLogin() {
     registerForm?.classList.add("hidden");
     loginForm?.classList.remove("hidden");
@@ -219,8 +203,6 @@ document.addEventListener("DOMContentLoaded", () => {
     msg("");
   }
 
-
-  // SHOW REGISTRATION
 
   function showRegister() {
     loginForm?.classList.add("hidden");
@@ -248,23 +230,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
   // ========================================
-  // AUTO-REDIRECT EXISTING SIGNED-IN USERS
+  // IMPORTANT:
+  // DO NOT AUTO-REDIRECT ON PUBLIC PAGE LOAD.
+  // VISITORS AND ALREADY-SIGNED-IN ADMINS
+  // MUST SEE THE PUBLIC SCHOLARBRIDGE PAGE.
   // ========================================
-
-  if (registerForm || loginForm) {
-    sb.auth.getSession().then(({ data, error }) => {
-
-      if (error) {
-        console.error(error);
-        return;
-      }
-
-      if (data.session) {
-        goForStatus();
-      }
-
-    });
-  }
 
 
   // ========================================
@@ -290,9 +260,7 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    const button = registerForm.querySelector(
-      'button[type="submit"]'
-    );
+    const button = registerForm.querySelector('button[type="submit"]');
 
     if (button) {
       button.disabled = true;
@@ -351,9 +319,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const email = $("login-email").value.trim();
     const password = $("login-password").value;
 
-    const button = loginForm.querySelector(
-      'button[type="submit"]'
-    );
+    const button = loginForm.querySelector('button[type="submit"]');
 
     if (button) {
       button.disabled = true;
@@ -385,4 +351,4 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
 });
-    
+
