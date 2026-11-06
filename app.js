@@ -1,3 +1,4 @@
+
 // ==========================================
 // SCHOLARBRIDGE - SUPABASE CONFIGURATION
 // ==========================================
@@ -33,10 +34,7 @@ async function callNotify(event, payload = {}) {
     const { data, error } = await sb.functions.invoke(
       "notify-admin",
       {
-        body: {
-          event,
-          ...payload
-        }
+        body: { event, ...payload }
       }
     );
 
@@ -54,17 +52,45 @@ async function callNotify(event, payload = {}) {
 
 
 // ==========================================
-// GET CURRENT APPLICATION
+// GET LOGGED-IN USER
+// ==========================================
+
+async function getCurrentUser() {
+  const { data, error } = await sb.auth.getUser();
+
+  if (error) throw error;
+  if (!data.user) throw new Error("Please sign in again.");
+
+  return data.user;
+}
+
+
+// ==========================================
+// GET PROFILE
+// USE ONLY REAL EXISTING COLUMNS
+// ==========================================
+
+async function currentProfile() {
+  const user = await getCurrentUser();
+
+  const { data, error } = await sb
+    .from("profiles")
+    .select("id, full_name, email, role, account_status")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (error) throw error;
+
+  return data;
+}
+
+
+// ==========================================
+// GET MEMBER APPLICATION
 // ==========================================
 
 async function currentApplication() {
-
-  const {
-    data: { user },
-    error: authError
-  } = await sb.auth.getUser();
-
-  if (authError || !user) return null;
+  const user = await getCurrentUser();
 
   const { data, error } = await sb
     .from("scholarbridge_applications")
@@ -81,79 +107,54 @@ async function currentApplication() {
 
 
 // ==========================================
-// GET EXISTING MEMBER PROFILE
-// ==========================================
-
-async function currentProfile() {
-
-  const {
-    data: { user },
-    error: authError
-  } = await sb.auth.getUser();
-
-  if (authError || !user) return null;
-
-  const { data, error } = await sb
-    .from("profiles")
-    .select("status, account_status")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (error) throw error;
-
-  return data;
-}
-
-
-// ==========================================
-// ACCOUNT STATUS ROUTING
+// ACCOUNT ROUTING
 // ==========================================
 
 async function goForStatus() {
-
   try {
-
     msg("Checking your account...");
 
     // FIRST: CHECK THE EXISTING PROFILE.
-    // THIS TAKES PRIORITY FOR OLD MEMBERS.
 
     const profile = await currentProfile();
 
     if (profile) {
 
-      const profileStatus =
-        profile.account_status || profile.status;
+      // ADMIN ALWAYS GOES TO ADMIN DASHBOARD.
 
-      if (
-        profile.account_status === "approved" ||
-        profile.status === "approved"
-      ) {
+      if (profile.role === "admin") {
+        location.replace("admin.html");
+        return;
+      }
+
+      // APPROVED MEMBERS GO DIRECTLY TO DASHBOARD.
+
+      if (profile.account_status === "approved") {
         location.replace("dashboard.html");
         return;
       }
 
-      if (profileStatus === "suspended") {
+      if (profile.account_status === "suspended") {
         location.replace("suspended.html");
         return;
       }
 
       if (
-        profileStatus === "pending_approval" ||
-        profileStatus === "payment_review"
+        profile.account_status === "pending_approval" ||
+        profile.account_status === "payment_review"
       ) {
         location.replace("pending.html");
         return;
       }
 
-      if (profileStatus === "rejected") {
+      if (profile.account_status === "rejected") {
         location.replace("pending.html");
         return;
       }
     }
 
-
-    // SECOND: CHECK THE NEW APPLICATION TABLE.
+    // SECOND: CHECK APPLICATION IF PROFILE
+    // DOES NOT ALREADY DETERMINE DESTINATION.
 
     const app = await currentApplication();
 
@@ -187,13 +188,8 @@ async function goForStatus() {
     }
 
   } catch (error) {
-
     console.error("Account routing error:", error);
-
-    msg(
-      "Unable to check your account. Please refresh and try again."
-    );
-
+    msg("Unable to check your account: " + error.message);
   }
 }
 
@@ -211,12 +207,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const loginTab = $("show-login");
 
 
-  // ========================================
-  // SHOW SIGN IN
-  // ========================================
+  // SHOW LOGIN
 
   function showLogin() {
-
     registerForm?.classList.add("hidden");
     loginForm?.classList.remove("hidden");
 
@@ -227,12 +220,9 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
 
-  // ========================================
-  // SHOW CREATE ACCOUNT
-  // ========================================
+  // SHOW REGISTRATION
 
   function showRegister() {
-
     loginForm?.classList.add("hidden");
     registerForm?.classList.remove("hidden");
 
@@ -244,26 +234,24 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
   loginTab?.addEventListener("click", showLogin);
-
   registerTab?.addEventListener("click", showRegister);
 
-  $("register-login-link")?.addEventListener("click", (e) => {
+  $("register-login-link")?.addEventListener("click", e => {
     e.preventDefault();
     showLogin();
   });
 
-  $("login-register-link")?.addEventListener("click", (e) => {
+  $("login-register-link")?.addEventListener("click", e => {
     e.preventDefault();
     showRegister();
   });
 
 
   // ========================================
-  // AUTOMATIC REDIRECT FOR SIGNED-IN MEMBERS
+  // AUTO-REDIRECT EXISTING SIGNED-IN USERS
   // ========================================
 
   if (registerForm || loginForm) {
-
     sb.auth.getSession().then(({ data, error }) => {
 
       if (error) {
@@ -276,16 +264,14 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
     });
-
   }
 
 
   // ========================================
-  // CREATE NEW MEMBER ACCOUNT
+  // CREATE ACCOUNT
   // ========================================
 
-  registerForm?.addEventListener("submit", async (e) => {
-
+  registerForm?.addEventListener("submit", async e => {
     e.preventDefault();
 
     const name = $("reg-name").value.trim();
@@ -304,32 +290,28 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    const submitButton = registerForm.querySelector(
+    const button = registerForm.querySelector(
       'button[type="submit"]'
     );
 
-    if (submitButton) {
-      submitButton.disabled = true;
-      submitButton.textContent = "Creating account...";
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Creating account...";
     }
 
     msg("Creating your Scholarbridge account...");
 
     try {
-
       const { data, error } = await sb.auth.signUp({
-
         email,
         password,
-
         options: {
           data: {
             full_name: name,
-            whatsapp: whatsapp,
-            country: country
+            whatsapp,
+            country
           }
         }
-
       });
 
       if (error) throw error;
@@ -338,69 +320,52 @@ document.addEventListener("DOMContentLoaded", () => {
         throw new Error("Account creation could not be completed.");
       }
 
-      // EMAIL CONFIRMATION REQUIRED
-
       if (!data.session) {
-
-        msg(
-          "Account created successfully. Confirm your email, then sign in."
-        );
-
+        msg("Account created. Please confirm your email, then sign in.");
         showLogin();
         return;
       }
 
-      // NEW MEMBERS START THE APPLICATION PROCESS.
-
       location.replace("level.html");
 
     } catch (error) {
-
       console.error(error);
-
       msg(error.message || "Registration failed.");
 
     } finally {
-
-      if (submitButton) {
-        submitButton.disabled = false;
-        submitButton.textContent = "Create account";
+      if (button) {
+        button.disabled = false;
+        button.textContent = "Create account";
       }
-
     }
-
   });
 
 
   // ========================================
-  // MEMBER SIGN IN
+  // MEMBER / ADMIN SIGN IN
   // ========================================
 
-  loginForm?.addEventListener("submit", async (e) => {
-
+  loginForm?.addEventListener("submit", async e => {
     e.preventDefault();
 
     const email = $("login-email").value.trim();
     const password = $("login-password").value;
 
-    const submitButton = loginForm.querySelector(
+    const button = loginForm.querySelector(
       'button[type="submit"]'
     );
 
-    if (submitButton) {
-      submitButton.disabled = true;
-      submitButton.textContent = "Signing in...";
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Signing in...";
     }
 
     msg("Signing in securely...");
 
     try {
-
       const { error } = await sb.auth.signInWithPassword({
-
         email,
         password
-
       });
 
       if (error) throw error;
@@ -408,21 +373,16 @@ document.addEventListener("DOMContentLoaded", () => {
       await goForStatus();
 
     } catch (error) {
-
       console.error(error);
-
-      msg(error.message || "Sign in failed. Please try again.");
+      msg(error.message || "Sign in failed.");
 
     } finally {
-
-      if (submitButton) {
-        submitButton.disabled = false;
-        submitButton.textContent = "Sign in securely";
+      if (button) {
+        button.disabled = false;
+        button.textContent = "Sign in securely";
       }
-
     }
-
   });
 
 });
-          
+    
