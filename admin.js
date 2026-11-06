@@ -1,1 +1,185 @@
-let all=[];async function adminLoad(){const {data:{user}}=await sb.auth.getUser();if(!user){location.href="index.html";return;}const {data:allowed,error:ae}=await sb.from("scholarbridge_admins").select("user_id").eq("user_id",user.id).maybeSingle();if(ae||!allowed){document.getElementById("message").textContent="Administrator access required.";return;}const {data,error}=await sb.from("scholarbridge_applications").select("*").order("created_at",{ascending:false});if(error){document.getElementById("message").textContent=error.message;return;}all=data||[];render();}function render(){const q=document.getElementById("search").value.toLowerCase();const host=document.getElementById("applications");host.innerHTML="";all.filter(a=>[a.full_name,a.phone,a.fbk_reference,a.status].join(" ").toLowerCase().includes(q)).forEach(a=>{const row=document.createElement("div");row.className="admin-row";const info=document.createElement("div");info.innerHTML=`<b>${safe(a.full_name)}</b><div class="small">${safe(a.phone)} · Level ${a.level} · FBK ${safe(a.fbk_reference||"—")}</div>`;const state=document.createElement("div");state.textContent=a.status;const actions=document.createElement("div");actions.style.display="flex";actions.style.gap="6px";actions.style.flexWrap="wrap";[["Approve","approved"],["Return to FBK","rejected"],["Suspend","suspended"]].forEach(([label,status])=>{const b=document.createElement("button");b.className="secondary";b.textContent=label;b.onclick=()=>changeStatus(a,status);actions.appendChild(b);});row.append(info,state,actions);host.appendChild(row);});}function safe(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}async function changeStatus(a,status){let reason="";if(status==="rejected"||status==="suspended"){reason=prompt(status==="rejected"?"Reason for returning the FBK reference:":"Reason for suspension:")||"";if(!reason)return;}const {error}=await sb.from("scholarbridge_applications").update({status,rejection_reason:status==="rejected"?reason:null,suspension_reason:status==="suspended"?reason:null,reviewed_at:new Date().toISOString()}).eq("id",a.id);if(error){document.getElementById("message").textContent=error.message;return;}await sb.from("scholarbridge_admin_audit").insert({application_id:a.id,action:status,details:{reason}});await adminLoad();}document.addEventListener("DOMContentLoaded",()=>{adminLoad();document.getElementById("search").addEventListener("input",render);});
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Scholarbridge Admin Centre</title>
+
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script defer src="app.js"></script>
+  <script defer src="admin.js"></script>
+
+  <style>
+    .admin-header {
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      flex-wrap:wrap;
+      gap:14px;
+    }
+    .admin-grid {
+      display:grid;
+      grid-template-columns:repeat(4,minmax(0,1fr));
+      gap:12px;
+      margin:22px 0;
+    }
+    .admin-stat {
+      padding:17px;
+      border:1px solid var(--border,#ddd);
+      border-radius:13px;
+      background:var(--card,#fff);
+    }
+    .admin-stat strong {
+      display:block;
+      font-size:27px;
+      margin-top:9px;
+    }
+    .admin-actions,.admin-filters {
+      display:flex;
+      flex-wrap:wrap;
+      gap:9px;
+      align-items:center;
+    }
+    .admin-filters button.active {
+      background:#075b46;
+      color:white;
+    }
+    .admin-row {
+      display:grid;
+      grid-template-columns:minmax(0,1fr) auto;
+      gap:14px;
+      padding:17px 0;
+      border-bottom:1px solid var(--border,#ddd);
+    }
+    .admin-row h3 {margin:0 0 7px;font-size:16px}
+    .admin-row p {margin:5px 0;font-size:13px}
+    .admin-row-actions {
+      display:flex;
+      flex-wrap:wrap;
+      gap:7px;
+      align-items:center;
+    }
+    .admin-row-actions button {
+      padding:8px 11px;
+      font-size:12px;
+    }
+    .admin-toolbar {
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      flex-wrap:wrap;
+      gap:12px;
+      margin:18px 0;
+    }
+    .admin-toolbar input {
+      flex:1;
+      min-width:180px;
+    }
+    .admin-status {
+      display:inline-block;
+      padding:5px 9px;
+      border-radius:20px;
+      background:#e8eee9;
+      color:#245b40;
+      font-size:11px;
+      font-weight:700;
+    }
+    .admin-empty {
+      padding:30px 10px;
+      text-align:center;
+      color:#777;
+    }
+    .admin-danger {
+      background:#922f2f!important;
+      color:white!important;
+    }
+    @media(max-width:650px) {
+      .admin-grid {grid-template-columns:repeat(2,minmax(0,1fr))}
+      .admin-row {grid-template-columns:1fr}
+      .admin-row-actions button {flex:1}
+    }
+  </style>
+</head>
+
+<body>
+<main class="layout">
+
+  <header class="admin-header">
+    <a class="brand" href="index.html">✦ SCHOLARBRIDGE</a>
+
+    <div class="admin-actions">
+      <span class="status">ADMIN CONSOLE</span>
+      <button type="button" class="secondary" data-signout>
+        Sign Out
+      </button>
+    </div>
+  </header>
+
+  <section class="panel" style="margin-top:22px">
+
+    <h1>Administration Centre</h1>
+    <p class="muted">Manage applications and member account approvals.</p>
+
+    <div class="admin-grid">
+
+      <div class="admin-stat">
+        <span class="muted">Total applications</span>
+        <strong id="stat-total">—</strong>
+      </div>
+
+      <div class="admin-stat">
+        <span class="muted">Awaiting review</span>
+        <strong id="stat-pending">—</strong>
+      </div>
+
+      <div class="admin-stat">
+        <span class="muted">Approved</span>
+        <strong id="stat-approved">—</strong>
+      </div>
+
+      <div class="admin-stat">
+        <span class="muted">Suspended</span>
+        <strong id="stat-suspended">—</strong>
+      </div>
+
+    </div>
+
+    <div class="admin-toolbar">
+      <h2>Member applications</h2>
+      <button type="button" class="secondary" id="refresh">
+        ↻ Refresh
+      </button>
+    </div>
+
+    <input
+      id="search"
+      type="search"
+      placeholder="Search name, phone, FBK number or status">
+
+    <div class="admin-filters" style="margin:17px 0">
+      <button type="button" class="secondary active" data-filter="all">All</button>
+      <button type="button" class="secondary" data-filter="pending_approval">Pending</button>
+      <button type="button" class="secondary" data-filter="approved">Approved</button>
+      <button type="button" class="secondary" data-filter="awaiting_fbk">Awaiting FBK</button>
+      <button type="button" class="secondary" data-filter="suspended">Suspended</button>
+      <button type="button" class="secondary" data-filter="rejected">Rejected</button>
+    </div>
+
+    <p id="message" class="message" aria-live="polite"></p>
+
+    <div id="applications">
+      <div class="admin-empty">Loading applications...</div>
+    </div>
+
+  </section>
+
+  <footer style="text-align:center;padding:20px">
+    <p class="muted">Scholarbridge Administration</p>
+  </footer>
+
+</main>
+</body>
+</html>
+                                   
