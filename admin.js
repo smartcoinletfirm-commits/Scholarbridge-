@@ -1,42 +1,101 @@
 
 let all = [];
 let activeFilter = "all";
+let adminVerified = false;
+let loading = false;
 
 const el = id => document.getElementById(id);
 
 function adminMessage(message) {
-  if (el("message")) el("message").textContent = message;
+  if (el("message")) {
+    el("message").textContent = message;
+  }
 }
 
 
 // ==========================================
-// VERIFY ADMIN USING EXISTING PROFILES TABLE
+// VERIFY ADMIN USING ADMINISTRATORS TABLE
 // ==========================================
 
 async function verifyAdmin() {
-  const { data: { user }, error: authError } = await sb.auth.getUser();
+
+  const { data: { user }, error: authError } =
+    await sb.auth.getUser();
 
   if (authError || !user) {
     location.replace("index.html");
     return false;
   }
 
-  const { data: profile, error } = await sb
-    .from("profiles")
-    .select("id, role, account_status")
-    .eq("id", user.id)
+  const { data: allowed, error } = await sb
+    .from("scholarbridge_admins")
+    .select("user_id")
+    .eq("user_id", user.id)
     .maybeSingle();
 
   if (error) {
-    throw new Error("Could not verify administrator: " + error.message);
+    throw new Error(
+      "Could not verify administrator: " + error.message
+    );
   }
 
-  if (!profile || profile.role !== "admin") {
+  if (!allowed) {
     adminMessage("Administrator access required.");
+
+    await sb.auth.signOut({ scope: "local" });
+
+    location.replace("index.html");
     return false;
   }
 
+  adminVerified = true;
   return true;
+}
+
+
+// ==========================================
+// ADMIN SIGN OUT
+// RETURN TO PUBLIC WELCOME PAGE
+// ==========================================
+
+async function adminSignOut() {
+
+  const button =
+    el("logout-btn") ||
+    el("sign-out-btn") ||
+    el("signout-btn");
+
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Signing out...";
+  }
+
+  adminVerified = false;
+
+  try {
+
+    const { error } = await sb.auth.signOut({
+      scope: "local"
+    });
+
+    if (error) throw error;
+
+    // Return to the public welcome page.
+    window.location.replace("index.html");
+
+  } catch (error) {
+
+    console.error("Admin sign-out error:", error);
+
+    adminMessage(
+      "Sign out failed: " + error.message
+    );
+
+    if (button) {
+      button.disabled = false;
+      button.textContent = "Sign out";
+    }
+  }
 }
 
 
@@ -45,12 +104,21 @@ async function verifyAdmin() {
 // ==========================================
 
 async function adminLoad() {
+
+  if (loading) return;
+
+  loading = true;
+
   const host = el("applications");
 
-  if (host) host.textContent = "Loading applications...";
+  if (host) {
+    host.textContent = "Loading applications...";
+  }
+
   adminMessage("Checking administrator access...");
 
   try {
+
     const allowed = await verifyAdmin();
 
     if (!allowed) return;
@@ -70,8 +138,13 @@ async function adminLoad() {
     adminMessage("Applications loaded successfully.");
 
   } catch (error) {
+
     console.error("Admin loading error:", error);
+
     adminMessage(error.message);
+
+  } finally {
+    loading = false;
   }
 }
 
@@ -81,6 +154,7 @@ async function adminLoad() {
 // ==========================================
 
 function updateStatistics() {
+
   const count = status =>
     all.filter(a => a.status === status).length;
 
@@ -89,15 +163,18 @@ function updateStatistics() {
   }
 
   if (el("stat-pending")) {
-    el("stat-pending").textContent = count("pending_approval");
+    el("stat-pending").textContent =
+      count("pending_approval");
   }
 
   if (el("stat-approved")) {
-    el("stat-approved").textContent = count("approved");
+    el("stat-approved").textContent =
+      count("approved");
   }
 
   if (el("stat-suspended")) {
-    el("stat-suspended").textContent = count("suspended");
+    el("stat-suspended").textContent =
+      count("suspended");
   }
 }
 
@@ -107,89 +184,163 @@ function updateStatistics() {
 // ==========================================
 
 function render() {
+
+  if (!adminVerified) return;
+
   const host = el("applications");
+
   if (!host) return;
 
   host.replaceChildren();
 
-  const query = (el("search")?.value || "").toLowerCase();
+  const query = (
+    el("search")?.value || ""
+  ).toLowerCase();
 
   const filtered = all.filter(a => {
+
     const matchesSearch = [
       a.full_name,
       a.phone,
       a.fbk_number,
       a.status,
       a.level
-    ].join(" ").toLowerCase().includes(query);
+    ]
+      .join(" ")
+      .toLowerCase()
+      .includes(query);
 
     const matchesFilter =
-      activeFilter === "all" || a.status === activeFilter;
+      activeFilter === "all" ||
+      a.status === activeFilter;
 
     return matchesSearch && matchesFilter;
   });
 
   if (!filtered.length) {
+
     const empty = document.createElement("div");
+
     empty.className = "admin-empty";
     empty.textContent = "No matching applications found.";
+
     host.appendChild(empty);
+
     return;
   }
 
   filtered.forEach(a => {
+
     const row = document.createElement("article");
+
     row.className = "admin-row";
 
     const details = document.createElement("div");
 
     const name = document.createElement("h3");
-    name.textContent = a.full_name || "Unnamed member";
+
+    name.textContent =
+      a.full_name || "Unnamed member";
 
     const phone = document.createElement("p");
-    phone.textContent = "Phone: " + (a.phone || "Not provided");
+
+    phone.textContent =
+      "Phone: " + (a.phone || "Not provided");
 
     const level = document.createElement("p");
-    level.textContent = "Member level: " + (a.level ?? "—");
+
+    level.textContent =
+      "Member level: " + (a.level ?? "—");
 
     const fbk = document.createElement("p");
-    fbk.textContent = "FBK number: " + (a.fbk_number || "—");
+
+    fbk.textContent =
+      "FBK number: " + (a.fbk_number || "—");
 
     const status = document.createElement("span");
-    status.className = "admin-status";
-    status.textContent = (a.status || "unknown").replaceAll("_", " ").toUpperCase();
 
-    details.append(name, phone, level, fbk, status);
+    status.className = "admin-status";
+
+    status.textContent = (
+      a.status || "unknown"
+    ).replaceAll("_", " ").toUpperCase();
+
+    details.append(
+      name,
+      phone,
+      level,
+      fbk,
+      status
+    );
 
     const actions = document.createElement("div");
+
     actions.className = "admin-row-actions";
 
     if (a.status !== "approved") {
-      addAction(actions, "Approve", () => changeStatus(a, "approved"));
+
+      addAction(
+        actions,
+        "Approve",
+        () => changeStatus(a, "approved")
+      );
     }
 
     if (a.status !== "awaiting_fbk") {
-      addAction(actions, "Return to FBK", () => changeStatus(a, "awaiting_fbk"));
+
+      addAction(
+        actions,
+        "Return to FBK",
+        () => changeStatus(a, "awaiting_fbk")
+      );
     }
 
     if (a.status !== "suspended") {
-      addAction(actions, "Suspend", () => changeStatus(a, "suspended"), true);
+
+      addAction(
+        actions,
+        "Suspend",
+        () => changeStatus(a, "suspended"),
+        true
+      );
+
     } else {
-      addAction(actions, "Restore", () => changeStatus(a, "approved"));
+
+      addAction(
+        actions,
+        "Restore",
+        () => changeStatus(a, "approved")
+      );
     }
 
     row.append(details, actions);
+
     host.appendChild(row);
   });
 }
 
 
-function addAction(host, label, callback, danger = false) {
+// ==========================================
+// ACTION BUTTON CREATOR
+// ==========================================
+
+function addAction(
+  host,
+  label,
+  callback,
+  danger = false
+) {
+
   const button = document.createElement("button");
 
   button.type = "button";
-  button.className = danger ? "secondary admin-danger" : "secondary";
+
+  button.className = danger
+    ? "secondary admin-danger"
+    : "secondary";
+
   button.textContent = label;
+
   button.addEventListener("click", callback);
 
   host.appendChild(button);
@@ -201,9 +352,19 @@ function addAction(host, label, callback, danger = false) {
 // ==========================================
 
 async function changeStatus(application, newStatus) {
+
+  if (!adminVerified) {
+    adminMessage("Administrator access required.");
+    return;
+  }
+
   let reason = "";
 
-  if (newStatus === "awaiting_fbk" || newStatus === "suspended") {
+  if (
+    newStatus === "awaiting_fbk" ||
+    newStatus === "suspended"
+  ) {
+
     reason = prompt(
       newStatus === "suspended"
         ? "Enter the reason for suspension:"
@@ -223,13 +384,15 @@ async function changeStatus(application, newStatus) {
   adminMessage("Updating member account...");
 
   try {
-    const { data: { user }, error: authError } = await sb.auth.getUser();
 
-    if (authError || !user) {
-      throw new Error("Your administrator session has expired.");
-    }
+    // Recheck admin authorization.
 
-    // Update the application.
+    const allowed = await verifyAdmin();
+
+    if (!allowed) return;
+
+    // Update application.
+
     const applicationUpdate = {
       status: newStatus,
       rejection_reason:
@@ -242,9 +405,12 @@ async function changeStatus(application, newStatus) {
       .update(applicationUpdate)
       .eq("id", application.id);
 
-    if (applicationError) throw applicationError;
+    if (applicationError) {
+      throw applicationError;
+    }
 
-    // Keep the profile status consistent with application routing.
+    // Synchronize member profile.
+
     const profileStatus = {
       approved: "approved",
       suspended: "suspended",
@@ -253,48 +419,95 @@ async function changeStatus(application, newStatus) {
 
     const { error: profileError } = await sb
       .from("profiles")
-      .update({ account_status: profileStatus })
+      .update({
+        account_status: profileStatus
+      })
       .eq("id", application.user_id);
 
     if (profileError) {
+
       throw new Error(
         "Application updated, but profile status could not be updated: " +
         profileError.message
       );
     }
 
-    adminMessage("Member account updated successfully.");
+    adminMessage(
+      "Member account updated successfully."
+    );
 
     await adminLoad();
 
   } catch (error) {
+
     console.error("Status update error:", error);
+
     adminMessage(error.message);
   }
 }
 
 
 // ==========================================
-// FILTERS, SEARCH AND REFRESH
+// FILTERS, SEARCH, REFRESH AND SIGN OUT
 // ==========================================
 
 document.addEventListener("DOMContentLoaded", () => {
 
-  el("search")?.addEventListener("input", render);
+  // SIGN OUT
 
-  el("refresh")?.addEventListener("click", adminLoad);
+  const logoutButton =
+    el("logout-btn") ||
+    el("sign-out-btn") ||
+    el("signout-btn");
 
-  document.querySelectorAll("[data-filter]").forEach(button => {
-    button.addEventListener("click", () => {
-      activeFilter = button.dataset.filter;
+  logoutButton?.addEventListener(
+    "click",
+    adminSignOut
+  );
 
-      document.querySelectorAll("[data-filter]").forEach(item => {
-        item.classList.toggle("active", item === button);
+
+  // SEARCH
+
+  el("search")?.addEventListener(
+    "input",
+    render
+  );
+
+
+  // REFRESH
+
+  el("refresh")?.addEventListener(
+    "click",
+    adminLoad
+  );
+
+
+  // FILTERS
+
+  document.querySelectorAll("[data-filter]")
+    .forEach(button => {
+
+      button.addEventListener("click", () => {
+
+        activeFilter = button.dataset.filter;
+
+        document.querySelectorAll("[data-filter]")
+          .forEach(item => {
+
+            item.classList.toggle(
+              "active",
+              item === button
+            );
+          });
+
+        render();
       });
-
-      render();
     });
-  });
+
+
+  // INITIAL ADMIN LOAD
 
   adminLoad();
+
 });
+                         
