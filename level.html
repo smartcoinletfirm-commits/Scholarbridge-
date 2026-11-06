@@ -1,1 +1,60 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Choose your level | Scholarbridge</title><link rel="stylesheet" href="style.css"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script defer src="app.js"></script><script defer src="level.js"></script></head><body><main class="layout"><a class="brand" href="index.html">✦ SCHOLARBRIDGE</a><section class="panel" style="margin-top:28px"><span class="eyebrow">APPLICATION • STEP 1</span><h2>Choose your member level</h2><p class="muted">Enter your contact number and submit your preferred level.</p><form id="level-form"><label>Member level<select id="level" required><option value="">Select level</option><option value="1">Level 1</option><option value="2">Level 2</option><option value="3">Level 3</option><option value="4">Level 4</option><option value="5">Level 5</option><option value="6">Level 6</option></select></label><label>Phone number<input id="phone" placeholder="2547XXXXXXXX" required></label><button class="primary">Submit level</button></form><p id="message" class="message"></p></section></main></body></html>
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Choose your level | Scholarbridge</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script defer src="app.js"></script>
+  <script defer src="level.js"></script>
+</head>
+<body>
+  <main class="layout">
+    <a class="brand" href="index.html">✦ SCHOLARBRIDGE</a>
+
+    <section class="panel" style="margin-top:28px">
+      <span class="eyebrow">APPLICATION • STEP 1</span>
+      <h2>Choose your member level</h2>
+      <p class="muted">
+        Enter your contact number and submit your preferred level.
+      </p>
+
+      <form id="level-form">
+        <label>
+          Member level
+          <select id="level" required>
+            <option value="">Select level</option>
+            <option value="1">Level 1</option>
+            <option value="2">Level 2</option>
+            <option value="3">Level 3</option>
+            <option value="4">Level 4</option>
+            <option value="5">Level 5</option>
+            <option value="6">Level 6</option>
+          </select>
+        </label>
+
+        <label>
+          Phone number
+          <input
+            id="phone"
+            type="tel"
+            placeholder="2547XXXXXXXX"
+            pattern="254[0-9]{9}"
+            minlength="12"
+            maxlength="12"
+            required
+          >
+        </label>
+
+        <button class="primary" type="submit">
+          Submit level
+        </button>
+      </form>
+
+      <p id="message" class="message"></p>
+    </section>
+  </main>
+</body>
+</html>
