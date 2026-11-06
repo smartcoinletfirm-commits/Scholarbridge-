@@ -1,1 +1,52 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Scholarbridge administration</title><link rel="stylesheet" href="style.css"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script defer src="app.js"></script><script defer src="admin.js"></script></head><body><main class="layout"><div class="topline"><a class="brand" href="index.html">✦ SCHOLARBRIDGE</a><span class="status">ADMIN CONSOLE</span></div><section class="panel" style="margin-top:22px"><h2>Member applications</h2><p class="muted">Restricted administrator area. Access is checked against the server-side admin allowlist.</p><input id="search" placeholder="Search name, phone or FBK reference"><div id="applications"></div><p id="message" class="message"></p></section></main></body></html>
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Scholarbridge administration</title>
+
+  <link rel="stylesheet" href="style.css">
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script defer src="app.js"></script>
+  <script defer src="admin.js"></script>
+</head>
+
+<body>
+  <main class="layout">
+
+    <div class="topline">
+      <a class="brand" href="index.html">✦ SCHOLARBRIDGE</a>
+
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <span class="status">ADMIN CONSOLE</span>
+
+        <button
+          type="button"
+          data-signout
+          style="background:#8b2525;color:white;border:0;padding:9px 15px;border-radius:8px;font-weight:600;cursor:pointer">
+          Sign Out
+        </button>
+      </div>
+    </div>
+
+    <section class="panel" style="margin-top:22px">
+      <h2>Member applications</h2>
+
+      <p class="muted">
+        Restricted administrator area. Access is checked against the server-side admin allowlist.
+      </p>
+
+      <input
+        id="search"
+        placeholder="Search name, phone or FBK reference">
+
+      <div id="applications"></div>
+
+      <p id="message" class="message"></p>
+    </section>
+
+  </main>
+</body>
+</html>
