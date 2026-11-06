@@ -1,0 +1,1 @@
+let n=60;const el=document.getElementById("count");const tick=()=>{if(!el)return;el.textContent=`Preparing review page • ${n} seconds`;if(n-->0)setTimeout(tick,1000);else location.href="pending.html";};tick();
